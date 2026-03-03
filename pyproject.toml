@@ -1,0 +1,22 @@
+[project]
+name = "wargames"
+version = "0.1.0"
+description = "Red team / blue team LLM competition with evolutionary learning"
+requires-python = ">=3.12"
+dependencies = [
+    "textual>=0.85.0",
+    "httpx>=0.27.0",
+    "aiosqlite>=0.20.0",
+    "pydantic>=2.10.0",
+    "tomli>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24.0"]
+
+[project.scripts]
+wargames = "wargames.cli:main"
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
