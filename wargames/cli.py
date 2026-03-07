@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import logging
 import signal
 import sys
 from pathlib import Path
@@ -54,6 +55,10 @@ def main(argv: list[str] | None = None):
     args = parse_args(argv)
 
     if args.command == "start":
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
         from wargames.config import load_config
         from wargames.worker import Worker
         config = load_config(Path(args.config))

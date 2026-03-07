@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from pathlib import Path
 from collections.abc import AsyncGenerator
 from wargames.models import GameConfig, Phase, RoundResult, MatchOutcome
@@ -10,6 +11,8 @@ from wargames.engine.judge import Judge
 from wargames.engine.draft import DraftEngine
 from wargames.engine.round import RoundEngine
 from wargames.engine.strategy import extract_strategies, save_strategies, get_top_strategies, update_win_rates
+
+logger = logging.getLogger(__name__)
 
 
 class GameEngine:
@@ -80,14 +83,22 @@ class GameEngine:
             red_strat_texts = [s.content for s in red_top]
             blue_strat_texts = [s.content for s in blue_top]
 
-            result = await round_engine.play(
-                round_number=round_num,
-                phase=self._current_phase,
-                red_lessons=red_lessons,
-                blue_lessons=blue_lessons,
-                red_strategies=red_strat_texts,
-                blue_strategies=blue_strat_texts,
-            )
+            try:
+                result = await round_engine.play(
+                    round_number=round_num,
+                    phase=self._current_phase,
+                    red_lessons=red_lessons,
+                    blue_lessons=blue_lessons,
+                    red_strategies=red_strat_texts,
+                    blue_strategies=blue_strat_texts,
+                )
+            except Exception as exc:
+                logger.error("Round %d failed: %s — skipping to next round", round_num, exc)
+                if self._on_event:
+                    self._on_event("round_error", {
+                        "round": round_num, "error": str(exc),
+                    })
+                continue
 
             # Track scores for phase advancement
             self._round_scores.append(float(result.red_score))
@@ -99,12 +110,15 @@ class GameEngine:
                 red_lessons.append(result.blue_debrief[:500])
 
             # Extract and save strategies, then update win rates
-            red_strats = await extract_strategies(result, "red", self._judge_client)
-            blue_strats = await extract_strategies(result, "blue", self._judge_client)
-            await save_strategies(red_strats + blue_strats, self.db)
-            won_red = result.outcome in (MatchOutcome.RED_WIN, MatchOutcome.RED_AUTO_WIN)
-            await update_win_rates("red", self._current_phase.value, won_red, self.db)
-            await update_win_rates("blue", self._current_phase.value, not won_red, self.db)
+            try:
+                red_strats = await extract_strategies(result, "red", self._judge_client)
+                blue_strats = await extract_strategies(result, "blue", self._judge_client)
+                await save_strategies(red_strats + blue_strats, self.db)
+                won_red = result.outcome in (MatchOutcome.RED_WIN, MatchOutcome.RED_AUTO_WIN)
+                await update_win_rates("red", self._current_phase.value, won_red, self.db)
+                await update_win_rates("blue", self._current_phase.value, not won_red, self.db)
+            except Exception as exc:
+                logger.warning("Strategy extraction failed for round %d: %s", round_num, exc)
 
             # Check phase advancement
             new_phase = self._check_phase_advance(self._current_phase)

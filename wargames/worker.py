@@ -1,10 +1,13 @@
 import asyncio
+import logging
 import os
 from pathlib import Path
 from wargames.models import GameConfig
 from wargames.engine.game import GameEngine
 from wargames.output.vault import VaultWriter
 from wargames.tui.bridge import EventBridge
+
+logger = logging.getLogger(__name__)
 
 
 class Worker:
@@ -100,6 +103,9 @@ class Worker:
                         self._vault.write_patch(patch)
         except asyncio.CancelledError:
             pass
+        except Exception as exc:
+            logger.error("Worker crashed: %s", exc, exc_info=True)
+            self._bridge.push("worker_error", {"error": str(exc)})
         finally:
             if self._engine:
                 await self._engine.cleanup()

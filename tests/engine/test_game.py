@@ -1,4 +1,5 @@
 import pytest
+import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
 from pathlib import Path
 from wargames.engine.game import GameEngine
@@ -121,3 +122,46 @@ async def test_game_engine_extracts_strategies(config):
         assert mock_extract.call_count == 6
         # save_strategies called once per round
         assert mock_save.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_game_engine_survives_round_failure(config):
+    """If a round raises an LLM error, the game skips it and continues."""
+    good_result = RoundResult(
+        round_number=2, phase=Phase.PROMPT_INJECTION,
+        outcome=MatchOutcome.BLUE_WIN, red_score=3, blue_threshold=10,
+        red_draft=[], blue_draft=[], attacks=[], defenses=[],
+        red_debrief="notes", blue_debrief="notes",
+    )
+    config.game.rounds = 3
+
+    with patch("wargames.engine.game.RoundEngine") as MockRound, \
+         patch("wargames.engine.game.LLMClient") as MockLLMClient, \
+         patch("wargames.engine.game.extract_strategies", new_callable=AsyncMock, return_value=[]), \
+         patch("wargames.engine.game.save_strategies", new_callable=AsyncMock), \
+         patch("wargames.engine.game.get_top_strategies", new_callable=AsyncMock, return_value=[]), \
+         patch("wargames.engine.game.update_win_rates", new_callable=AsyncMock):
+
+        mock_llm = MagicMock()
+        mock_llm.close = AsyncMock()
+        MockLLMClient.return_value = mock_llm
+
+        # Round 1 raises ReadTimeout, rounds 2-3 succeed
+        mock_play = AsyncMock(side_effect=[
+            httpx.ReadTimeout("LLM timed out"),
+            good_result,
+            good_result,
+        ])
+        MockRound.return_value.play = mock_play
+        MockRound.return_value.on_event = MagicMock()
+
+        engine = GameEngine(config)
+        await engine.init()
+        results = []
+        async for result in engine.run():
+            results.append(result)
+        await engine.cleanup()
+
+        # Only 2 results: round 1 failed, rounds 2 and 3 succeeded
+        assert len(results) == 2
+        assert mock_play.call_count == 3

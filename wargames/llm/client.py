@@ -8,7 +8,7 @@ class LLMClient:
 
     def __init__(self, settings: TeamSettings):
         self.settings = settings
-        self._http = httpx.AsyncClient(base_url=settings.model, timeout=300.0)
+        self._http = httpx.AsyncClient(base_url=settings.model, timeout=settings.timeout)
 
     async def chat(self, messages: list[dict], system: str | None = None) -> str:
         if system:
