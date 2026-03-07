@@ -48,7 +48,10 @@ class RoundEngine:
 
         # 1. DRAFT
         from wargames.engine.draft import DraftPool
-        pool = DraftPool.default()
+        if phase in (Phase.REAL_CVES, Phase.OPEN_ENDED) and self.db:
+            pool = await DraftPool.from_cves(self.db)
+        else:
+            pool = DraftPool.default()
         red_draft_picks, blue_draft_picks = await self.draft_engine.run(
             pool, self.red.llm, self.blue.llm
         )

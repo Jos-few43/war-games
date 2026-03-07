@@ -385,6 +385,13 @@ class Database:
         row = await cursor.fetchone()
         return row["value"] if row else None
 
+    async def get_cves(self, limit: int = 20) -> list[dict]:
+        cursor = await self._conn.execute(
+            "SELECT * FROM crawled_cves ORDER BY ROWID DESC LIMIT ?", (limit,)
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
     async def save_cve(self, cve: dict) -> None:
         await self._conn.execute(
             """
