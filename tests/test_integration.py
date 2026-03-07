@@ -133,3 +133,119 @@ async def test_full_round_pipeline(tmp_path):
     loaded = await db.get_round(1)
     assert loaded.round_number == 1
     await db.close()
+
+
+@pytest.mark.asyncio
+async def test_full_pipeline_with_reports_and_strategies(tmp_path):
+    """Integration test: full round with bug reports, patches, strategies, and vault output."""
+    import json as _json
+    from unittest.mock import AsyncMock
+    from wargames.teams.red import RedTeamAgent
+    from wargames.teams.blue import BlueTeamAgent
+    from wargames.engine.judge import Judge
+    from wargames.engine.draft import DraftEngine
+    from wargames.engine.round import RoundEngine
+    from wargames.output.db import Database
+    from wargames.output.vault import VaultWriter
+    from wargames.engine.strategy import extract_strategies
+    from wargames.models import Phase
+
+    async def mock_chat(messages, system=None):
+        s = (system or "").lower()
+        if not system:
+            # Draft picks — no system prompt; return a valid resource name
+            return "fuzzer"
+        elif "draft" in s:
+            return "fuzzer"
+        elif "judge" in s and "attack" in s:
+            return _json.dumps({
+                "valid": True, "severity": "high", "points": 5,
+                "auto_win": False, "reasoning": "test attack eval",
+            })
+        elif "judge" in s and "defense" in s:
+            return _json.dumps({"blocked": False, "reasoning": "test defense eval"})
+        elif "judge" in s and "patch" in s:
+            return _json.dumps({"addressed": True, "completeness": 0.8, "reasoning": "good patch"})
+        elif "vulnerability report" in s:
+            return _json.dumps({
+                "title": "Test Vuln", "severity": "high", "domain": "code-vuln",
+                "target": "test", "steps_to_reproduce": "step",
+                "proof_of_concept": "poc", "impact": "high impact",
+            })
+        elif "blue team engineer" in s and "patch" in s:
+            return _json.dumps({
+                "title": "Test Fix", "fixes": "fix-vuln", "strategy": "strat",
+                "changes": "changes here", "verification": "verify it",
+            })
+        elif "json array" in s or "extract" in s:
+            return "[]"
+        else:
+            return "Mock response for testing"
+
+    # Build a minimal mock LLM object whose .chat is the async function above
+    mock_llm = AsyncMock()
+    mock_llm.chat = mock_chat
+
+    red = RedTeamAgent(mock_llm)
+    blue = BlueTeamAgent(mock_llm)
+    judge = Judge(mock_llm)
+    draft_engine = DraftEngine(picks_per_team=2, style="snake")
+
+    db = Database(tmp_path / "test_pipeline.db")
+    await db.init()
+
+    engine = RoundEngine(
+        red=red,
+        blue=blue,
+        judge=judge,
+        draft_engine=draft_engine,
+        db=db,
+        turn_limit=1,
+        score_threshold=10,
+    )
+
+    result = await engine.play(
+        round_number=1,
+        phase=Phase.CODE_VULNS,
+    )
+
+    # Verify core result structure
+    assert result.attacks, "Expected at least one attack"
+    assert result.defenses, "Expected at least one defense"
+    assert result.red_debrief, "Expected non-empty red debrief"
+    assert result.blue_debrief, "Expected non-empty blue debrief"
+
+    # The attack succeeds (valid=True, points=5), so bug reports and patches must be populated
+    assert result.bug_reports, "Expected at least one bug report"
+    assert result.patches, "Expected at least one patch"
+
+    # Verify vault output
+    vault_path = tmp_path / "vault"
+    vault = VaultWriter(vault_path)
+    vault.write_round(result)
+    for br in result.bug_reports:
+        vault.write_bug_report(br)
+    for patch in result.patches:
+        vault.write_patch(patch)
+
+    num = f"{result.round_number:03d}"
+    assert (vault_path / "rounds" / f"round-{num}.md").exists()
+    assert (vault_path / "debriefs" / f"R{num}-red-debrief.md").exists()
+    assert (vault_path / "debriefs" / f"R{num}-blue-debrief.md").exists()
+    assert any((vault_path / "bug-reports").iterdir()), "Expected bug-report files in vault"
+    assert any((vault_path / "patches").iterdir()), "Expected patch files in vault"
+
+    # Verify strategy extraction (returns empty list for mock, but must not error)
+    red_strategies = await extract_strategies(result, "red", mock_llm)
+    blue_strategies = await extract_strategies(result, "blue", mock_llm)
+    assert isinstance(red_strategies, list)
+    assert isinstance(blue_strategies, list)
+
+    # Verify DB persistence
+    loaded = await db.get_round(1)
+    assert loaded.round_number == 1
+    assert loaded.phase == Phase.CODE_VULNS
+    assert loaded.attacks, "Loaded round must have attacks"
+    assert loaded.defenses, "Loaded round must have defenses"
+
+    await db.close()
