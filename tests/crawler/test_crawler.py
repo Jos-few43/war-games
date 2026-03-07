@@ -66,3 +66,36 @@ async def test_nvd_crawler_stores_to_db():
     results = await crawler.fetch(keyword="xss", max_results=1)
     await crawler.store(mock_db, results)
     mock_db.save_cve.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_nvd_crawler_retries_on_timeout():
+    mock_http = AsyncMock()
+    import httpx
+    mock_success = MagicMock()
+    mock_success.status_code = 200
+    mock_success.json.return_value = {
+        "vulnerabilities": [{
+            "cve": {
+                "id": "CVE-2024-9999",
+                "descriptions": [{"lang": "en", "value": "Test"}],
+                "metrics": {},
+            }
+        }]
+    }
+    mock_success.raise_for_status = MagicMock()
+    mock_http.get.side_effect = [httpx.ReadTimeout("timeout"), mock_success]
+
+    crawler = NVDCrawler(mock_http)
+    results = await crawler.fetch(keyword="test", max_results=1)
+    assert len(results) == 1
+    assert results[0]["cve_id"] == "CVE-2024-9999"
+
+@pytest.mark.asyncio
+async def test_nvd_crawler_returns_empty_on_persistent_failure():
+    mock_http = AsyncMock()
+    import httpx
+    mock_http.get.side_effect = httpx.ConnectError("down")
+
+    crawler = NVDCrawler(mock_http)
+    results = await crawler.fetch(keyword="test", max_results=1)
+    assert results == []
