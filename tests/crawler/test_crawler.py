@@ -99,3 +99,31 @@ async def test_nvd_crawler_returns_empty_on_persistent_failure():
     crawler = NVDCrawler(mock_http)
     results = await crawler.fetch(keyword="test", max_results=1)
     assert results == []
+
+@pytest.mark.asyncio
+async def test_exploitdb_crawler_retries_on_timeout():
+    mock_http = AsyncMock()
+    import httpx
+    mock_success = MagicMock()
+    mock_success.status_code = 200
+    mock_success.text = (
+        "id,file,description,date_published,author,platform,type,port\n"
+        "99999,exploits/test.txt,Retry Test,2024-01-01,tester,linux,local,0\n"
+    )
+    mock_success.raise_for_status = MagicMock()
+    mock_http.get.side_effect = [httpx.ReadTimeout("timeout"), mock_success]
+
+    crawler = ExploitDBCrawler(mock_http)
+    results = await crawler.fetch(max_results=1)
+    assert len(results) == 1
+    assert results[0]["cve_id"] == "EDB-99999"
+
+@pytest.mark.asyncio
+async def test_exploitdb_crawler_returns_empty_on_persistent_failure():
+    mock_http = AsyncMock()
+    import httpx
+    mock_http.get.side_effect = httpx.ConnectError("down")
+
+    crawler = ExploitDBCrawler(mock_http)
+    results = await crawler.fetch(max_results=1)
+    assert results == []
