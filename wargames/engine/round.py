@@ -43,9 +43,6 @@ class RoundEngine:
         red_strategies = red_strategies or []
         blue_strategies = blue_strategies or []
 
-        if not target:
-            target = self._default_target(phase)
-
         # 1. DRAFT
         from wargames.engine.draft import DraftPool
         if phase in (Phase.REAL_CVES, Phase.OPEN_ENDED) and self.db:
@@ -58,6 +55,20 @@ class RoundEngine:
         red_tools = [p.resource_name for p in red_draft_picks]
         blue_tools = [p.resource_name for p in blue_draft_picks]
         self._emit("draft_complete", {"red": red_tools, "blue": blue_tools})
+
+        # Target selection happens after draft so CVE picks can inform the scenario
+        if not target:
+            if phase in (Phase.REAL_CVES, Phase.OPEN_ENDED):
+                from wargames.engine.scenario import ScenarioGenerator
+                from wargames.engine.draft import Resource
+                cve_resources = [
+                    Resource(pick.resource_name, "cve", pick.resource_name)
+                    for pick in red_draft_picks + blue_draft_picks
+                    if pick.resource_category == "cve"
+                ]
+                target = ScenarioGenerator().generate_target(cve_resources)
+            else:
+                target = self._default_target(phase)
 
         # 2. MATCH (turn-based)
         red_score = 0
