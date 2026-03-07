@@ -150,3 +150,13 @@ class Patch(BaseModel):
     strategy: str
     changes: str
     verification: str
+
+
+class Strategy(BaseModel):
+    team: str
+    phase: int
+    strategy_type: str  # "attack", "defense", "draft"
+    content: str
+    win_rate: float = 0.0
+    usage_count: int = 0
+    created_round: int = 0

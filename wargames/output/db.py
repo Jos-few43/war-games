@@ -80,6 +80,19 @@ CREATE TABLE IF NOT EXISTS game_state (
 )
 """
 
+CREATE_STRATEGIES = """
+CREATE TABLE IF NOT EXISTS strategies (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    team           TEXT,
+    phase          INTEGER,
+    strategy_type  TEXT,
+    content        TEXT,
+    win_rate       REAL DEFAULT 0.0,
+    usage_count    INTEGER DEFAULT 0,
+    created_round  INTEGER
+)
+"""
+
 ALL_TABLES = [
     CREATE_ROUNDS,
     CREATE_ATTACKS,
@@ -87,6 +100,7 @@ ALL_TABLES = [
     CREATE_DRAFT_PICKS,
     CREATE_CRAWLED_CVES,
     CREATE_GAME_STATE,
+    CREATE_STRATEGIES,
 ]
 
 
