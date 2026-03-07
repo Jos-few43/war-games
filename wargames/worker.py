@@ -4,6 +4,7 @@ from pathlib import Path
 from wargames.models import GameConfig
 from wargames.engine.game import GameEngine
 from wargames.output.vault import VaultWriter
+from wargames.tui.bridge import EventBridge
 
 
 class Worker:
@@ -13,6 +14,11 @@ class Worker:
         self._engine: GameEngine | None = None
         self._vault: VaultWriter | None = None
         self._stop = False
+        self._bridge = EventBridge()
+
+    @property
+    def bridge(self) -> EventBridge:
+        return self._bridge
 
     def _write_pid(self):
         self.pid_file.parent.mkdir(parents=True, exist_ok=True)
@@ -28,6 +34,7 @@ class Worker:
         try:
             self._engine = GameEngine(self.config)
             await self._engine.init()
+            self._engine.on_event(lambda etype, data: self._bridge.push(etype, data))
 
             if self.config.output.vault.enabled:
                 vault_path = Path(self.config.output.vault.path).expanduser()

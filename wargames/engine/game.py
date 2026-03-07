@@ -25,6 +25,11 @@ class GameEngine:
         self._round_scores: list[float] = []
         self._current_phase = Phase.PROMPT_INJECTION
         self._current_round = 0
+        self._on_event = None
+
+    def on_event(self, callback):
+        """Set event callback for live updates."""
+        self._on_event = callback
 
     async def init(self):
         """Initialize database and LLM clients."""
@@ -65,6 +70,9 @@ class GameEngine:
                 turn_limit=self.config.game.turn_limit,
                 score_threshold=self.config.game.score_threshold,
             )
+
+            if self._on_event:
+                round_engine.on_event(self._on_event)
 
             # Load top strategies for current phase before each round
             red_top = await get_top_strategies("red", self._current_phase.value, self.db)
