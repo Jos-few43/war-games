@@ -1,12 +1,13 @@
-# Test config for first run with Ollama direct
-# Uses small models to minimize VRAM pressure
+# Multi-round test config for Ollama direct
+# 3 rounds × 4 turns with qwen3:4b for better gameplay
+# Single model avoids VRAM swap pressure on 6GB GPU
 
 [game]
-name = "test-local"
-rounds = 1
-turn_limit = 2
-score_threshold = 10
-phase_advance_score = 7.5
+name = "test-multi-qwen3"
+rounds = 3
+turn_limit = 4
+score_threshold = 12
+phase_advance_score = 8.0
 
 [draft]
 picks_per_team = 3

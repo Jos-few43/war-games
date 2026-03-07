@@ -18,34 +18,64 @@ class VaultWriter:
         slug = re.sub(r'[\s]+', '-', slug)
         return slug[:60]
 
+    def _truncate(self, text: str, max_len: int = 120) -> str:
+        """Truncate text at word boundary."""
+        if len(text) <= max_len:
+            return text
+        truncated = text[:max_len].rsplit(" ", 1)[0]
+        return truncated + "..."
+
     def write_round(self, result: RoundResult):
         """Write round summary, red debrief, and blue debrief."""
         num = f"{result.round_number:03d}"
+        phase_name = result.phase.name.lower().replace("_", "-")
 
         # Round summary
         content = (
             f"---\n"
             f"type: round\n"
             f"round: {result.round_number}\n"
-            f"phase: {result.phase.value}\n"
+            f"phase: {phase_name}\n"
             f"outcome: {result.outcome.value}\n"
             f"red_score: {result.red_score}\n"
             f"blue_threshold: {result.blue_threshold}\n"
-            f"tags: [wargames]\n"
+            f"tags: [wargames, round]\n"
             f"---\n\n"
             f"# Round {result.round_number}\n\n"
-            f"**Phase:** {result.phase.name}  \n"
+            f"**Phase:** {result.phase.name.replace('_', ' ').title()}  \n"
             f"**Outcome:** {result.outcome.value}  \n"
             f"**Red Score:** {result.red_score} / {result.blue_threshold}\n\n"
-            f"## Attacks\n\n"
         )
+
+        # Draft picks
+        if result.red_draft or result.blue_draft:
+            content += "## Draft Picks\n\n"
+            red_picks = ", ".join(f"`{p.resource_name}`" for p in result.red_draft)
+            blue_picks = ", ".join(f"`{p.resource_name}`" for p in result.blue_draft)
+            content += f"- **Red:** {red_picks}\n"
+            content += f"- **Blue:** {blue_picks}\n\n"
+
+        # Attacks
+        content += "## Attacks\n\n"
         for a in result.attacks:
             status = "SUCCESS" if a.success else "FAIL"
-            content += f"- Turn {a.turn}: [{status}] {a.description[:100]}\n"
-        content += f"\n## Defenses\n\n"
+            severity = f" ({a.severity.value})" if a.severity else ""
+            desc = self._truncate(a.description.replace("\n", " ").strip())
+            content += f"- Turn {a.turn}: **{status}**{severity} — {desc}\n"
+
+        # Defenses
+        content += "\n## Defenses\n\n"
         for d in result.defenses:
             status = "BLOCKED" if d.blocked else "MISSED"
-            content += f"- Turn {d.turn}: [{status}] {d.description[:100]}\n"
+            desc = self._truncate(d.description.replace("\n", " ").strip())
+            content += f"- Turn {d.turn}: **{status}** — {desc}\n"
+
+        # Wikilinks to debriefs
+        content += (
+            f"\n## Debriefs\n\n"
+            f"- [[R{num}-red-debrief|Red Team Debrief]]\n"
+            f"- [[R{num}-blue-debrief|Blue Team Debrief]]\n"
+        )
 
         (self.base_path / "rounds" / f"round-{num}.md").write_text(content)
 
@@ -56,8 +86,13 @@ class VaultWriter:
                 f"type: debrief\n"
                 f"round: {result.round_number}\n"
                 f"team: {team}\n"
+                f"phase: {phase_name}\n"
                 f"outcome: {result.outcome.value}\n"
-                f"tags: [wargames, debrief]\n"
+                f"tags: [wargames, debrief, {team}-team]\n"
+                f"---\n\n"
+                f"**Round:** [[round-{num}|Round {result.round_number}]]  \n"
+                f"**Team:** {team.title()} Team  \n"
+                f"**Outcome:** {result.outcome.value}\n\n"
                 f"---\n\n"
                 f"{debrief_text}\n"
             )

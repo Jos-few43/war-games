@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from wargames.models import GameConfig
 from wargames.engine.game import GameEngine
+from wargames.output.vault import VaultWriter
 
 
 class Worker:
@@ -10,6 +11,7 @@ class Worker:
         self.config = config
         self.pid_file = pid_file or Path("~/.local/share/wargames/worker.pid").expanduser()
         self._engine: GameEngine | None = None
+        self._vault: VaultWriter | None = None
         self._stop = False
 
     def _write_pid(self):
@@ -26,9 +28,16 @@ class Worker:
         try:
             self._engine = GameEngine(self.config)
             await self._engine.init()
+
+            if self.config.output.vault.enabled:
+                vault_path = Path(self.config.output.vault.path).expanduser()
+                self._vault = VaultWriter(vault_path)
+
             async for result in self._engine.run():
                 if self._stop:
                     break
+                if self._vault:
+                    self._vault.write_round(result)
         except asyncio.CancelledError:
             pass
         finally:

@@ -43,7 +43,7 @@ def test_round_file_has_frontmatter(writer, sample_round):
     content = (writer.base_path / "rounds" / "round-001.md").read_text()
     assert "---" in content
     assert "round: 1" in content
-    assert "phase: 1" in content
+    assert "phase: prompt-injection" in content
     assert "outcome: red_win" in content
 
 
