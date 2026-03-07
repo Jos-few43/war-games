@@ -38,6 +38,9 @@ class Worker:
                     break
                 if self._vault:
                     self._vault.write_round(result)
+                    phase_name = result.phase.name.lower().replace("_", "-")
+                    # Strategy vault output will be populated when strategies are extracted
+                    self._vault.write_strategy_update(result.round_number, phase_name, [])
         except asyncio.CancelledError:
             pass
         finally:

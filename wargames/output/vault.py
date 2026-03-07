@@ -141,3 +141,31 @@ class VaultWriter:
         path = self.base_path / "knowledge" / f"{filename}.md"
         existing = path.read_text() if path.exists() else ""
         path.write_text(existing + "\n" + content if existing else content)
+
+    def write_strategy_update(self, round_number: int, phase_name: str, strategies: list):
+        """Append strategy learnings to per-phase strategy evolution file."""
+        strat_dir = self.base_path / "strategies"
+        strat_dir.mkdir(parents=True, exist_ok=True)
+        path = strat_dir / f"phase-{phase_name}.md"
+
+        if not path.exists():
+            header = (
+                f"---\n"
+                f"type: strategy-evolution\n"
+                f"phase: {phase_name}\n"
+                f"tags: [wargames, strategy]\n"
+                f"---\n\n"
+                f"# Strategy Evolution: {phase_name.replace('-', ' ').title()}\n\n"
+            )
+            path.write_text(header)
+
+        entries = []
+        for s in strategies:
+            entries.append(
+                f"- **[{s.strategy_type}]** {s.content} "
+                f"(win rate: {s.win_rate:.0%}, used {s.usage_count}x)"
+            )
+        if entries:
+            with open(path, "a") as f:
+                f.write(f"\n## Round {round_number}\n\n")
+                f.write("\n".join(entries) + "\n")
