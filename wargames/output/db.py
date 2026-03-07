@@ -6,9 +6,12 @@ import aiosqlite
 
 from wargames.models import (
     AttackResult,
+    BugReport,
     DefenseResult,
+    Domain,
     DraftPick,
     MatchOutcome,
+    Patch,
     Phase,
     RoundResult,
     Severity,
@@ -93,6 +96,32 @@ CREATE TABLE IF NOT EXISTS strategies (
 )
 """
 
+CREATE_BUG_REPORTS = """
+CREATE TABLE IF NOT EXISTS bug_reports (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    round_number       INTEGER REFERENCES rounds(round_number),
+    title              TEXT,
+    severity           TEXT,
+    domain             TEXT,
+    target             TEXT,
+    steps_to_reproduce TEXT,
+    proof_of_concept   TEXT,
+    impact             TEXT
+)
+"""
+
+CREATE_PATCHES = """
+CREATE TABLE IF NOT EXISTS patches (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    round_number INTEGER REFERENCES rounds(round_number),
+    title        TEXT,
+    fixes        TEXT,
+    strategy     TEXT,
+    changes      TEXT,
+    verification TEXT
+)
+"""
+
 ALL_TABLES = [
     CREATE_ROUNDS,
     CREATE_ATTACKS,
@@ -101,6 +130,8 @@ ALL_TABLES = [
     CREATE_CRAWLED_CVES,
     CREATE_GAME_STATE,
     CREATE_STRATEGIES,
+    CREATE_BUG_REPORTS,
+    CREATE_PATCHES,
 ]
 
 
@@ -147,7 +178,7 @@ class Database:
         )
 
         # Delete existing child rows so a re-save is idempotent.
-        for table in ("attacks", "defenses", "draft_picks"):
+        for table in ("attacks", "defenses", "draft_picks", "bug_reports", "patches"):
             await self._conn.execute(
                 f"DELETE FROM {table} WHERE round_number = ?",
                 (result.round_number,),
@@ -199,6 +230,43 @@ class Database:
                     pick.team,
                     pick.resource_name,
                     pick.resource_category,
+                ),
+            )
+
+        for bug in result.bug_reports:
+            await self._conn.execute(
+                """
+                INSERT INTO bug_reports
+                    (round_number, title, severity, domain, target,
+                     steps_to_reproduce, proof_of_concept, impact)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    result.round_number,
+                    bug.title,
+                    bug.severity.value,
+                    bug.domain.value,
+                    bug.target,
+                    bug.steps_to_reproduce,
+                    bug.proof_of_concept,
+                    bug.impact,
+                ),
+            )
+
+        for patch in result.patches:
+            await self._conn.execute(
+                """
+                INSERT INTO patches
+                    (round_number, title, fixes, strategy, changes, verification)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    result.round_number,
+                    patch.title,
+                    patch.fixes,
+                    patch.strategy,
+                    patch.changes,
+                    patch.verification,
                 ),
             )
 

@@ -26,6 +26,13 @@ Determine whether the described defense successfully blocked the described attac
 Respond ONLY with valid JSON in this exact format:
 {"blocked": bool, "reasoning": str}"""
 
+PATCH_SYSTEM_PROMPT = """You are an impartial judge evaluating a security patch against a vulnerability report.
+
+Respond ONLY with valid JSON:
+{"addressed": bool, "completeness": float, "reasoning": str}
+
+completeness is 0.0-1.0: 0=useless, 0.5=partial, 1.0=complete fix."""
+
 
 class Judge:
     def __init__(self, llm) -> None:
@@ -100,3 +107,22 @@ class Judge:
             return blocked, reasoning
         except (json.JSONDecodeError, KeyError, ValueError):
             return False, "Failed to parse judge response"
+
+    async def evaluate_patch(self, bug_report, patch) -> dict:
+        """Evaluate whether a patch adequately addresses a vulnerability."""
+        user_message = (
+            f"Vulnerability: {bug_report.title} ({bug_report.severity.value})\n"
+            f"Steps to reproduce: {bug_report.steps_to_reproduce}\n"
+            f"Patch title: {patch.title}\n"
+            f"Patch strategy: {patch.strategy}\n"
+            f"Patch changes: {patch.changes}\n\n"
+            "Does this patch adequately address the vulnerability?"
+        )
+        try:
+            response = await self.llm.chat(
+                [{"role": "user", "content": user_message}],
+                system=PATCH_SYSTEM_PROMPT,
+            )
+            return json.loads(response)
+        except (json.JSONDecodeError, Exception):
+            return {"addressed": False, "completeness": 0.0, "reasoning": "Parse error"}

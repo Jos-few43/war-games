@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from wargames.models import (
     RoundResult, Phase, MatchOutcome, AttackResult, DefenseResult, DraftPick,
+    BugReport, Patch,
 )
 
 
@@ -59,6 +60,8 @@ class RoundEngine:
         red_score = 0
         attacks = []
         defenses = []
+        bug_reports = []
+        patches = []
         auto_win = False
 
         for turn in range(1, self.turn_limit + 1):
@@ -70,6 +73,14 @@ class RoundEngine:
 
             if attack_result.success:
                 red_score += attack_result.points
+                # Generate structured bug report and patch
+                bug_report = await self.red.generate_bug_report(attack_desc, target, red_tools)
+                bug_report.round_number = round_number
+                bug_reports.append(bug_report)
+
+                patch = await self.blue.generate_patch(bug_report, target, blue_tools)
+                patch.round_number = round_number
+                patches.append(patch)
             attacks.append(attack_result)
             self._emit("attack", {"turn": turn, "description": attack_desc,
                                    "success": attack_result.success, "points": attack_result.points})
@@ -134,6 +145,8 @@ class RoundEngine:
             defenses=defenses,
             red_debrief=red_debrief,
             blue_debrief=blue_debrief,
+            bug_reports=bug_reports,
+            patches=patches,
         )
 
         # 6. SAVE TO DB

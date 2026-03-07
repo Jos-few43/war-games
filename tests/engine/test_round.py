@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock
 from wargames.engine.round import RoundEngine
-from wargames.models import Phase, MatchOutcome, RoundResult, DraftPick, AttackResult, Severity
+from wargames.models import Phase, MatchOutcome, RoundResult, DraftPick, AttackResult, Severity, BugReport, Patch, Domain
 
 
 @pytest.mark.asyncio
@@ -25,6 +25,14 @@ async def test_round_runs_to_completion():
         turn=0, description="", success=True, severity=Severity.HIGH, points=5, auto_win=False
     )
     mock_judge.evaluate_attack.return_value = attack_result
+
+    mock_red.generate_bug_report.return_value = BugReport(
+        round_number=0, title="SQLi", severity=Severity.HIGH, domain=Domain.CODE_VULN,
+        target="/api/users", steps_to_reproduce="", proof_of_concept="", impact="",
+    )
+    mock_blue.generate_patch.return_value = Patch(
+        round_number=0, title="Fix SQLi", fixes="", strategy="", changes="", verification="",
+    )
 
     mock_judge.evaluate_defense.return_value = (False, "Defense failed")
     mock_blue.defend.return_value = "Added input validation"
@@ -64,6 +72,14 @@ async def test_round_auto_win_ends_early():
         turn=0, description="", success=True, severity=Severity.CRITICAL, points=0, auto_win=True
     )
     mock_judge.evaluate_attack.return_value = attack_result
+
+    mock_red.generate_bug_report.return_value = BugReport(
+        round_number=0, title="Kernel Exploit", severity=Severity.CRITICAL, domain=Domain.CODE_VULN,
+        target="linux server", steps_to_reproduce="", proof_of_concept="", impact="",
+    )
+    mock_blue.generate_patch.return_value = Patch(
+        round_number=0, title="Patch Kernel", fixes="", strategy="", changes="", verification="",
+    )
 
     mock_blue.defend.return_value = "Attempted containment"
     mock_judge.evaluate_defense.return_value = (False, "Cannot block kernel exploit")

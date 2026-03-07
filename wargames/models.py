@@ -118,20 +118,6 @@ class DefenseResult(BaseModel):
     points_deducted: int = 0
 
 
-class RoundResult(BaseModel):
-    round_number: int
-    phase: Phase
-    outcome: MatchOutcome
-    red_score: int
-    blue_threshold: int
-    red_draft: list[DraftPick]
-    blue_draft: list[DraftPick]
-    attacks: list[AttackResult]
-    defenses: list[DefenseResult]
-    red_debrief: str = ""
-    blue_debrief: str = ""
-
-
 class BugReport(BaseModel):
     round_number: int
     title: str
@@ -150,6 +136,28 @@ class Patch(BaseModel):
     strategy: str
     changes: str
     verification: str
+
+
+class PatchScore(BaseModel):
+    addressed: bool = False
+    completeness: float = 0.0
+    reasoning: str = ""
+
+
+class RoundResult(BaseModel):
+    round_number: int
+    phase: Phase
+    outcome: MatchOutcome
+    red_score: int
+    blue_threshold: int
+    red_draft: list[DraftPick]
+    blue_draft: list[DraftPick]
+    attacks: list[AttackResult]
+    defenses: list[DefenseResult]
+    red_debrief: str = ""
+    blue_debrief: str = ""
+    bug_reports: list[BugReport] = []
+    patches: list[Patch] = []
 
 
 class Strategy(BaseModel):

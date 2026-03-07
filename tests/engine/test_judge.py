@@ -2,7 +2,7 @@ import pytest
 import json
 from unittest.mock import AsyncMock
 from wargames.engine.judge import Judge
-from wargames.models import Severity, AttackResult
+from wargames.models import Severity, AttackResult, BugReport, Patch, Domain
 
 
 @pytest.mark.asyncio
@@ -81,3 +81,23 @@ async def test_judge_evaluates_defense():
         available_tools=["waf_rules", "input_sanitizer"],
     )
     assert blocked is True
+
+
+@pytest.mark.asyncio
+async def test_judge_evaluates_patch():
+    mock_llm = AsyncMock()
+    mock_llm.chat.return_value = json.dumps({
+        "addressed": True,
+        "completeness": 0.85,
+        "reasoning": "Patch addresses the root cause",
+    })
+    judge = Judge(mock_llm)
+    bug = BugReport(round_number=1, title="SQLi", severity=Severity.HIGH,
+                    domain=Domain.CODE_VULN, target="/api",
+                    steps_to_reproduce="payload", proof_of_concept="",
+                    impact="DB access")
+    patch = Patch(round_number=1, title="Fix", fixes="parameterized queries",
+                  strategy="input validation", changes="login.py", verification="sqlmap")
+    result = await judge.evaluate_patch(bug, patch)
+    assert result["addressed"] is True
+    assert result["completeness"] == 0.85

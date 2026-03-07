@@ -1,3 +1,8 @@
+import json
+
+from wargames.models import Patch
+
+
 class BlueTeamAgent:
     def __init__(self, llm):
         self.llm = llm
@@ -22,6 +27,39 @@ class BlueTeamAgent:
             )}],
             system=system,
         )
+
+    async def generate_patch(self, bug_report, target: str, tools: list[str]) -> Patch:
+        """Generate a structured patch for a vulnerability report."""
+        system = (
+            "You are a blue team engineer writing a patch for a vulnerability.\n"
+            "Respond ONLY with valid JSON matching this schema:\n"
+            '{"title": str, "fixes": str, "strategy": str, "changes": str, "verification": str}'
+        )
+        response = await self.llm.chat(
+            [{"role": "user", "content": (
+                f"Vulnerability: {bug_report.title}\n"
+                f"Severity: {bug_report.severity.value}\n"
+                f"Steps: {bug_report.steps_to_reproduce}\n"
+                f"Target: {target}\nTools: {', '.join(tools)}\n\nWrite the patch."
+            )}],
+            system=system,
+        )
+        try:
+            data = json.loads(response)
+            return Patch(
+                round_number=0,
+                title=data.get("title", "Untitled Patch"),
+                fixes=data.get("fixes", ""),
+                strategy=data.get("strategy", ""),
+                changes=data.get("changes", ""),
+                verification=data.get("verification", ""),
+            )
+        except (json.JSONDecodeError, ValueError):
+            return Patch(
+                round_number=0, title=f"Patch for {bug_report.title}",
+                fixes="See defense description", strategy="reactive",
+                changes="", verification="manual review",
+            )
 
     async def write_debrief(self, defenses_summary: str, draft_picks: list[str], outcome: str) -> str:
         """Write a structured debrief report."""
