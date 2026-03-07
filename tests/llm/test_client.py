@@ -57,3 +57,21 @@ async def test_chat_raises_on_error(team_settings):
     with patch.object(client._http, "post", return_value=mock_response):
         with pytest.raises(Exception, match="Server error"):
             await client.chat([{"role": "user", "content": "Hi"}])
+
+@pytest.mark.asyncio
+async def test_chat_retries_on_read_timeout(team_settings):
+    client = LLMClient(team_settings)
+    mock_success = AsyncMock()
+    mock_success.status_code = 200
+    mock_success.json.return_value = {
+        "choices": [{"message": {"content": "recovered"}}]
+    }
+    mock_success.raise_for_status = lambda: None
+
+    import httpx
+    with patch.object(
+        client._http, "post",
+        side_effect=[httpx.ReadTimeout("timeout"), mock_success],
+    ):
+        result = await client.chat([{"role": "user", "content": "Hi"}])
+        assert result == "recovered"

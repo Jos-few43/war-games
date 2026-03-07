@@ -29,7 +29,7 @@ class LLMClient:
                 if hasattr(data, "__await__"):
                     data = await data
                 return data["choices"][0]["message"]["content"]
-            except (httpx.RemoteProtocolError, httpx.ConnectError) as exc:
+            except (httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadTimeout) as exc:
                 last_exc = exc
                 if attempt < self.MAX_RETRIES - 1:
                     await asyncio.sleep(self.RETRY_BACKOFF * (attempt + 1))
