@@ -48,6 +48,10 @@ class Worker:
                     phase_name = result.phase.name.lower().replace("_", "-")
                     # Strategy vault output will be populated when strategies are extracted
                     self._vault.write_strategy_update(result.round_number, phase_name, [])
+                    for bug in result.bug_reports:
+                        self._vault.write_bug_report(bug)
+                    for patch in result.patches:
+                        self._vault.write_patch(patch)
         except asyncio.CancelledError:
             pass
         finally:
