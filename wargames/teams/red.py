@@ -2,15 +2,17 @@ class RedTeamAgent:
     def __init__(self, llm):
         self.llm = llm
 
-    async def attack(self, target: str, tools: list[str], past_lessons: list[str]) -> str:
+    async def attack(self, target: str, tools: list[str], past_lessons: list[str], strategies: list[str] = None) -> str:
         """Generate an attack description against the target."""
         lessons_text = "\n".join(f"- {l}" for l in past_lessons) if past_lessons else "None yet."
+        strategies_text = "\n".join(f"- {s}" for s in strategies) if strategies else "None yet."
         system = (
             "You are a red team security researcher. Your job is to find vulnerabilities "
             "and craft exploits against the target system. Be creative, thorough, and realistic.\n\n"
             "Scoring: Low=1pt, Medium=3pts, High=5pts, Critical=8pts. "
             "Full privilege escalation or zero-day = automatic win.\n\n"
             f"Your available tools: {', '.join(tools)}\n\n"
+            f"Proven tactics from past seasons:\n{strategies_text}\n\n"
             f"Lessons from past rounds:\n{lessons_text}"
         )
         return await self.llm.chat(

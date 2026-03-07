@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 from collections.abc import AsyncGenerator
-from wargames.models import GameConfig, Phase, RoundResult
+from wargames.models import GameConfig, Phase, RoundResult, MatchOutcome
 from wargames.output.db import Database
 from wargames.llm.client import LLMClient
 from wargames.teams.red import RedTeamAgent
@@ -9,6 +9,7 @@ from wargames.teams.blue import BlueTeamAgent
 from wargames.engine.judge import Judge
 from wargames.engine.draft import DraftEngine
 from wargames.engine.round import RoundEngine
+from wargames.engine.strategy import extract_strategies, save_strategies, get_top_strategies, update_win_rates
 
 
 class GameEngine:
@@ -65,11 +66,19 @@ class GameEngine:
                 score_threshold=self.config.game.score_threshold,
             )
 
+            # Load top strategies for current phase before each round
+            red_top = await get_top_strategies("red", self._current_phase.value, self.db)
+            blue_top = await get_top_strategies("blue", self._current_phase.value, self.db)
+            red_strat_texts = [s.content for s in red_top]
+            blue_strat_texts = [s.content for s in blue_top]
+
             result = await round_engine.play(
                 round_number=round_num,
                 phase=self._current_phase,
                 red_lessons=red_lessons,
                 blue_lessons=blue_lessons,
+                red_strategies=red_strat_texts,
+                blue_strategies=blue_strat_texts,
             )
 
             # Track scores for phase advancement
@@ -80,6 +89,14 @@ class GameEngine:
                 blue_lessons.append(result.red_debrief[:500])
             if result.blue_debrief:
                 red_lessons.append(result.blue_debrief[:500])
+
+            # Extract and save strategies, then update win rates
+            red_strats = await extract_strategies(result, "red", self._judge_client)
+            blue_strats = await extract_strategies(result, "blue", self._judge_client)
+            await save_strategies(red_strats + blue_strats, self.db)
+            won_red = result.outcome in (MatchOutcome.RED_WIN, MatchOutcome.RED_AUTO_WIN)
+            await update_win_rates("red", self._current_phase.value, won_red, self.db)
+            await update_win_rates("blue", self._current_phase.value, not won_red, self.db)
 
             # Check phase advancement
             new_phase = self._check_phase_advance(self._current_phase)

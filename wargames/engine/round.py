@@ -34,10 +34,13 @@ class RoundEngine:
             self._on_event(event_type, data)
 
     async def play(self, round_number: int, phase: Phase, target: str = None,
-                   red_lessons: list[str] = None, blue_lessons: list[str] = None) -> RoundResult:
+                   red_lessons: list[str] = None, blue_lessons: list[str] = None,
+                   red_strategies: list[str] = None, blue_strategies: list[str] = None) -> RoundResult:
         """Execute a full round."""
         red_lessons = red_lessons or []
         blue_lessons = blue_lessons or []
+        red_strategies = red_strategies or []
+        blue_strategies = blue_strategies or []
 
         if not target:
             target = self._default_target(phase)
@@ -60,7 +63,7 @@ class RoundEngine:
 
         for turn in range(1, self.turn_limit + 1):
             # Red attacks
-            attack_desc = await self.red.attack(target, red_tools, red_lessons)
+            attack_desc = await self.red.attack(target, red_tools, red_lessons, red_strategies)
             attack_result = await self.judge.evaluate_attack(attack_desc, target, red_tools)
             attack_result.turn = turn
             attack_result.description = attack_desc
@@ -75,12 +78,12 @@ class RoundEngine:
             if attack_result.auto_win:
                 auto_win = True
                 # Blue still gets to respond (for the debrief) but match is over
-                defense_desc = await self.blue.defend(attack_desc, target, blue_tools, blue_lessons)
+                defense_desc = await self.blue.defend(attack_desc, target, blue_tools, blue_lessons, blue_strategies)
                 defenses.append(DefenseResult(turn=turn, description=defense_desc))
                 break
 
             # Blue defends
-            defense_desc = await self.blue.defend(attack_desc, target, blue_tools, blue_lessons)
+            defense_desc = await self.blue.defend(attack_desc, target, blue_tools, blue_lessons, blue_strategies)
             blocked, reasoning = await self.judge.evaluate_defense(attack_desc, defense_desc, blue_tools)
 
             points_deducted = 2 if blocked else 0
