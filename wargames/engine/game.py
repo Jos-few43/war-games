@@ -114,7 +114,7 @@ class GameEngine:
                 red_strats = await extract_strategies(result, "red", self._judge_client)
                 blue_strats = await extract_strategies(result, "blue", self._judge_client)
                 await save_strategies(red_strats + blue_strats, self.db)
-                won_red = result.outcome in (MatchOutcome.RED_WIN, MatchOutcome.RED_AUTO_WIN)
+                won_red = result.outcome in (MatchOutcome.RED_WIN, MatchOutcome.RED_AUTO_WIN, MatchOutcome.RED_CRITICAL_WIN)
                 await update_win_rates("red", self._current_phase.value, won_red, self.db)
                 await update_win_rates("blue", self._current_phase.value, not won_red, self.db)
             except Exception as exc:
