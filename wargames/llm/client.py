@@ -33,10 +33,14 @@ class LLMClient:
                 headers=fb_headers,
             )
 
+        self._prompt_tokens = 0
+        self._completion_tokens = 0
+        self._last_model_used = settings.model_name
+
     async def _attempt(
         self, http: httpx.AsyncClient, model_name: str,
         messages: list[dict], max_retries: int,
-    ) -> str:
+    ) -> tuple[str, dict]:
         payload = {
             "model": model_name,
             "messages": messages,
@@ -48,7 +52,9 @@ class LLMClient:
                 response = await http.post("/chat/completions", json=payload)
                 response.raise_for_status()
                 data = response.json()
-                return data["choices"][0]["message"]["content"]
+                content = data["choices"][0]["message"]["content"]
+                usage = data.get("usage", {})
+                return content, usage
             except httpx.HTTPStatusError as exc:
                 last_exc = exc
                 if exc.response.status_code not in RETRYABLE_STATUS:
@@ -64,14 +70,29 @@ class LLMClient:
                     await asyncio.sleep(self.RETRY_BACKOFF * (attempt + 1))
         raise last_exc
 
+    def get_usage(self, reset: bool = False) -> dict:
+        usage = {
+            "prompt_tokens": self._prompt_tokens,
+            "completion_tokens": self._completion_tokens,
+            "model_used": self._last_model_used,
+        }
+        if reset:
+            self._prompt_tokens = 0
+            self._completion_tokens = 0
+        return usage
+
     async def chat(self, messages: list[dict], system: str | None = None) -> str:
         if system:
             messages = [{"role": "system", "content": system}, *messages]
 
         try:
-            return await self._attempt(
+            content, usage = await self._attempt(
                 self._http, self.settings.model_name, messages, self.MAX_RETRIES,
             )
+            self._prompt_tokens += usage.get("prompt_tokens", 0)
+            self._completion_tokens += usage.get("completion_tokens", 0)
+            self._last_model_used = self.settings.model_name
+            return content
         except (httpx.HTTPStatusError, httpx.RemoteProtocolError,
                 httpx.ConnectError, httpx.ReadTimeout) as exc:
             if not self._fallback_http:
@@ -81,10 +102,14 @@ class LLMClient:
                 self.settings.model_name, self.MAX_RETRIES,
                 self.settings.fallback_model_name,
             )
-            return await self._attempt(
+            content, usage = await self._attempt(
                 self._fallback_http, self.settings.fallback_model_name,
                 messages, self.FALLBACK_RETRIES,
             )
+            self._prompt_tokens += usage.get("prompt_tokens", 0)
+            self._completion_tokens += usage.get("completion_tokens", 0)
+            self._last_model_used = self.settings.fallback_model_name
+            return content
 
     async def close(self):
         await self._http.aclose()
