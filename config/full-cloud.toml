@@ -1,22 +1,22 @@
 # All teams use free cloud models via OpenRouter
-# Red=405B attacker, Blue=120B defender, Judge=70B referee
+# Uses openrouter/free meta-model for auto-routing to available capacity
 # No API costs — all models are free tier on OpenRouter
 
 [game]
 name = "season-cloud-free"
-rounds = 5
-turn_limit = 6
+rounds = 3
+turn_limit = 4
 score_threshold = 10
 phase_advance_score = 7.5
 
 [draft]
-picks_per_team = 4
+picks_per_team = 3
 style = "snake"
 
 [teams.red]
 name = "Red Team"
 model = "https://openrouter.ai/api/v1"
-model_name = "nousresearch/hermes-3-llama-3.1-405b:free"
+model_name = "openrouter/free"
 temperature = 0.8
 timeout = 120.0
 api_key = "$OPENROUTER_API_KEY"
@@ -24,7 +24,7 @@ api_key = "$OPENROUTER_API_KEY"
 [teams.blue]
 name = "Blue Team"
 model = "https://openrouter.ai/api/v1"
-model_name = "openai/gpt-oss-120b:free"
+model_name = "openrouter/free"
 temperature = 0.4
 timeout = 120.0
 api_key = "$OPENROUTER_API_KEY"
@@ -32,7 +32,7 @@ api_key = "$OPENROUTER_API_KEY"
 [teams.judge]
 name = "Judge"
 model = "https://openrouter.ai/api/v1"
-model_name = "meta-llama/llama-3.3-70b-instruct:free"
+model_name = "openrouter/free"
 temperature = 0.2
 timeout = 120.0
 api_key = "$OPENROUTER_API_KEY"
