@@ -7,6 +7,7 @@ from pathlib import Path
 
 from wargames.crawler.cve import NVDCrawler
 from wargames.crawler.exploitdb import ExploitDBCrawler
+from wargames.models import MatchOutcome
 from wargames.output.db import Database
 
 
@@ -39,6 +40,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # export
     export_p = sub.add_parser("export", help="Export season results")
     export_p.add_argument("--format", default="markdown", choices=["markdown", "json"])
+    export_p.add_argument("--output", default=None, help="Output file path (default: stdout)")
 
     return parser.parse_args(argv)
 
@@ -182,8 +184,48 @@ def main(argv: list[str] | None = None):
         asyncio.run(_report())
 
     elif args.command == "export":
-        print(f"Exporting in {args.format} format")
-        # TODO: implement export
+        db_path = _default_db_path()
+
+        async def _export():
+            db = Database(db_path)
+            await db.init()
+            results = await db.get_all_rounds()
+            await db.close()
+
+            if not results:
+                print("No rounds found.")
+                return
+
+            if args.format == "json":
+                import json
+                data = {
+                    "rounds": [r.model_dump(mode="json") for r in results],
+                    "summary": {
+                        "total_rounds": len(results),
+                        "red_wins": sum(1 for r in results if r.outcome in (MatchOutcome.RED_WIN, MatchOutcome.RED_AUTO_WIN, MatchOutcome.RED_CRITICAL_WIN)),
+                        "blue_wins": sum(1 for r in results if r.outcome in (MatchOutcome.BLUE_WIN, MatchOutcome.BLUE_DECISIVE_WIN)),
+                    },
+                }
+                output = json.dumps(data, indent=2)
+            else:
+                lines = ["# Season Report", ""]
+                lines.append("| Round | Phase | Outcome | Red | Blue |")
+                lines.append("|-------|-------|---------|-----|------|")
+                for r in results:
+                    lines.append(f"| {r.round_number} | {r.phase.name} | {r.outcome.value} | {r.red_score} | {r.blue_score} |")
+                lines.append("")
+                red_w = sum(1 for r in results if r.outcome in (MatchOutcome.RED_WIN, MatchOutcome.RED_AUTO_WIN, MatchOutcome.RED_CRITICAL_WIN))
+                blue_w = sum(1 for r in results if r.outcome in (MatchOutcome.BLUE_WIN, MatchOutcome.BLUE_DECISIVE_WIN))
+                lines.append(f"**Red wins:** {red_w}  |  **Blue wins:** {blue_w}  |  **Total:** {len(results)}")
+                output = "\n".join(lines)
+
+            if args.output:
+                Path(args.output).write_text(output)
+                print(f"Exported to {args.output}")
+            else:
+                print(output)
+
+        asyncio.run(_export())
 
 
 if __name__ == "__main__":

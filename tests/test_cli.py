@@ -95,3 +95,63 @@ def test_report_prints_round_summary(tmp_path, capsys):
     assert "Round 1" in output
     assert "red_win" in output
     assert "SQL injection" in output
+
+
+import json
+
+
+def test_export_json(tmp_path, capsys):
+    """export --format json should print valid JSON."""
+    from wargames.models import RoundResult, Phase, MatchOutcome
+
+    mock_results = [
+        RoundResult(
+            round_number=1, phase=Phase.PROMPT_INJECTION,
+            outcome=MatchOutcome.RED_WIN, red_score=12, blue_score=3,
+            blue_threshold=10, red_draft=[], blue_draft=[],
+            attacks=[], defenses=[],
+        ),
+    ]
+
+    mock_db = MagicMock()
+    mock_db.init = AsyncMock()
+    mock_db.get_all_rounds = AsyncMock(return_value=mock_results)
+    mock_db.close = AsyncMock()
+
+    with patch("wargames.cli.Database", return_value=mock_db), \
+         patch("wargames.cli._default_db_path", return_value=tmp_path / "test.db"):
+        from wargames.cli import main
+        main(["export", "--format", "json"])
+
+    output = capsys.readouterr().out
+    data = json.loads(output)
+    assert len(data["rounds"]) == 1
+    assert data["rounds"][0]["outcome"] == "red_win"
+
+
+def test_export_markdown(tmp_path, capsys):
+    """export --format markdown should print a markdown table."""
+    from wargames.models import RoundResult, Phase, MatchOutcome
+
+    mock_results = [
+        RoundResult(
+            round_number=1, phase=Phase.PROMPT_INJECTION,
+            outcome=MatchOutcome.RED_WIN, red_score=12, blue_score=3,
+            blue_threshold=10, red_draft=[], blue_draft=[],
+            attacks=[], defenses=[],
+        ),
+    ]
+
+    mock_db = MagicMock()
+    mock_db.init = AsyncMock()
+    mock_db.get_all_rounds = AsyncMock(return_value=mock_results)
+    mock_db.close = AsyncMock()
+
+    with patch("wargames.cli.Database", return_value=mock_db), \
+         patch("wargames.cli._default_db_path", return_value=tmp_path / "test.db"):
+        from wargames.cli import main
+        main(["export", "--format", "markdown"])
+
+    output = capsys.readouterr().out
+    assert "| Round |" in output
+    assert "| 1 |" in output
