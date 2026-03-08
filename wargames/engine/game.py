@@ -173,6 +173,26 @@ class GameEngine:
             except Exception as exc:
                 logger.warning("ELO update failed for round %d: %s", round_num, exc)
 
+            # Save token usage
+            try:
+                costs = self.config.costs.rates if self.config.costs else {}
+                for team_name, client in [("red", self._red_client), ("blue", self._blue_client), ("judge", self._judge_client)]:
+                    usage = client.get_usage(reset=True)
+                    model = usage["model_used"]
+                    rate = costs.get(model, 0.0)
+                    total_tokens = usage["prompt_tokens"] + usage["completion_tokens"]
+                    cost = (total_tokens / 1000.0) * rate
+                    await self.db.save_token_usage(
+                        round_number=round_num,
+                        team=team_name,
+                        prompt_tokens=usage["prompt_tokens"],
+                        completion_tokens=usage["completion_tokens"],
+                        model_used=model,
+                        cost=cost,
+                    )
+            except Exception as exc:
+                logger.warning("Token usage tracking failed for round %d: %s", round_num, exc)
+
             # Check phase advancement
             new_phase = self._check_phase_advance(self._current_phase)
             if new_phase != self._current_phase:
