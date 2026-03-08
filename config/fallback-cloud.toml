@@ -14,9 +14,9 @@ style = "snake"
 
 [teams.red]
 name = "Red Team"
-model = "http://localhost:4002"
-model_name = "openrouter/auto"
-fallback_model = "http://localhost:11434"
+model = "http://localhost:4003"
+model_name = "llama-3-70b"
+fallback_model = "http://localhost:11434/v1"
 fallback_model_name = "qwen3:4b"
 temperature = 0.8
 timeout = 60.0
@@ -24,9 +24,9 @@ api_key = "$LITELLM_MASTER_KEY"
 
 [teams.blue]
 name = "Blue Team"
-model = "http://localhost:4002"
-model_name = "openrouter/auto"
-fallback_model = "http://localhost:11434"
+model = "http://localhost:4003"
+model_name = "llama-3-70b"
+fallback_model = "http://localhost:11434/v1"
 fallback_model_name = "qwen3:4b"
 temperature = 0.4
 timeout = 60.0
@@ -34,9 +34,9 @@ api_key = "$LITELLM_MASTER_KEY"
 
 [teams.judge]
 name = "Judge"
-model = "http://localhost:4002"
-model_name = "openrouter/auto"
-fallback_model = "http://localhost:11434"
+model = "http://localhost:4003"
+model_name = "llama-3-70b"
+fallback_model = "http://localhost:11434/v1"
 fallback_model_name = "qwen3:4b"
 temperature = 0.2
 timeout = 90.0
