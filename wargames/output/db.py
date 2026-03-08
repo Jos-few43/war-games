@@ -122,6 +122,39 @@ CREATE TABLE IF NOT EXISTS patches (
 )
 """
 
+CREATE_MODEL_RATINGS = """
+CREATE TABLE IF NOT EXISTS model_ratings (
+    model_name  TEXT PRIMARY KEY,
+    rating      REAL DEFAULT 1500.0,
+    wins        INTEGER DEFAULT 0,
+    losses      INTEGER DEFAULT 0,
+    draws       INTEGER DEFAULT 0,
+    last_played TEXT
+)
+"""
+
+CREATE_SEASONS = """
+CREATE TABLE IF NOT EXISTS seasons (
+    season_id   TEXT PRIMARY KEY,
+    config_name TEXT,
+    started_at  TEXT,
+    ended_at    TEXT,
+    winner      TEXT
+)
+"""
+
+CREATE_TOKEN_USAGE = """
+CREATE TABLE IF NOT EXISTS token_usage (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    round_number      INTEGER,
+    team              TEXT,
+    prompt_tokens     INTEGER,
+    completion_tokens INTEGER,
+    model_used        TEXT,
+    cost              REAL
+)
+"""
+
 ALL_TABLES = [
     CREATE_ROUNDS,
     CREATE_ATTACKS,
@@ -132,6 +165,9 @@ ALL_TABLES = [
     CREATE_STRATEGIES,
     CREATE_BUG_REPORTS,
     CREATE_PATCHES,
+    CREATE_MODEL_RATINGS,
+    CREATE_SEASONS,
+    CREATE_TOKEN_USAGE,
 ]
 
 
@@ -421,3 +457,122 @@ class Database:
             ),
         )
         await self._conn.commit()
+
+    # --- model_ratings ---
+
+    async def save_model_rating(
+        self,
+        model_name: str,
+        rating: float,
+        wins: int,
+        losses: int,
+        draws: int,
+    ) -> None:
+        await self._conn.execute(
+            """
+            INSERT OR REPLACE INTO model_ratings
+                (model_name, rating, wins, losses, draws, last_played)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (model_name, rating, wins, losses, draws),
+        )
+        await self._conn.commit()
+
+    async def get_model_rating(self, model_name: str) -> dict | None:
+        cursor = await self._conn.execute(
+            "SELECT * FROM model_ratings WHERE model_name = ?", (model_name,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def get_all_ratings(self) -> list[dict]:
+        cursor = await self._conn.execute(
+            "SELECT * FROM model_ratings ORDER BY rating DESC"
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+    # --- seasons ---
+
+    async def save_season(
+        self,
+        season_id: str,
+        config_name: str,
+        started_at: str,
+    ) -> None:
+        await self._conn.execute(
+            """
+            INSERT OR REPLACE INTO seasons
+                (season_id, config_name, started_at)
+            VALUES (?, ?, ?)
+            """,
+            (season_id, config_name, started_at),
+        )
+        await self._conn.commit()
+
+    async def get_season(self, season_id: str) -> dict | None:
+        cursor = await self._conn.execute(
+            "SELECT * FROM seasons WHERE season_id = ?", (season_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def end_season(
+        self,
+        season_id: str,
+        ended_at: str,
+        winner: str,
+    ) -> None:
+        await self._conn.execute(
+            """
+            UPDATE seasons SET ended_at = ?, winner = ?
+            WHERE season_id = ?
+            """,
+            (ended_at, winner, season_id),
+        )
+        await self._conn.commit()
+
+    # --- token_usage ---
+
+    async def save_token_usage(
+        self,
+        round_number: int,
+        team: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        model_used: str,
+        cost: float,
+    ) -> None:
+        await self._conn.execute(
+            """
+            INSERT INTO token_usage
+                (round_number, team, prompt_tokens, completion_tokens, model_used, cost)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (round_number, team, prompt_tokens, completion_tokens, model_used, cost),
+        )
+        await self._conn.commit()
+
+    async def get_token_usage(self) -> list[dict]:
+        cursor = await self._conn.execute(
+            "SELECT * FROM token_usage ORDER BY id"
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_token_totals(self) -> dict:
+        cursor = await self._conn.execute(
+            """
+            SELECT
+                SUM(prompt_tokens)     AS prompt_tokens,
+                SUM(completion_tokens) AS completion_tokens,
+                SUM(cost)              AS cost
+            FROM token_usage
+            """
+        )
+        row = await cursor.fetchone()
+        return {
+            "prompt_tokens": row["prompt_tokens"] or 0,
+            "completion_tokens": row["completion_tokens"] or 0,
+            "cost": row["cost"] or 0.0,
+        }
