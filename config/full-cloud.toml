@@ -1,6 +1,6 @@
-# All teams use free cloud models via OpenRouter
-# Uses openrouter/free meta-model for auto-routing to available capacity
-# No API costs — all models are free tier on OpenRouter
+# All teams use cloud models via OpenRouter auto-routing
+# Routes to best available model (Gemini, Claude, etc.)
+# Approximate cost: ~$0.05 per 3-round game
 
 [game]
 name = "season-cloud-free"
@@ -16,7 +16,7 @@ style = "snake"
 [teams.red]
 name = "Red Team"
 model = "https://openrouter.ai/api/v1"
-model_name = "openrouter/free"
+model_name = "openrouter/auto"
 temperature = 0.8
 timeout = 120.0
 api_key = "$OPENROUTER_API_KEY"
@@ -24,7 +24,7 @@ api_key = "$OPENROUTER_API_KEY"
 [teams.blue]
 name = "Blue Team"
 model = "https://openrouter.ai/api/v1"
-model_name = "openrouter/free"
+model_name = "openrouter/auto"
 temperature = 0.4
 timeout = 120.0
 api_key = "$OPENROUTER_API_KEY"
@@ -32,7 +32,7 @@ api_key = "$OPENROUTER_API_KEY"
 [teams.judge]
 name = "Judge"
 model = "https://openrouter.ai/api/v1"
-model_name = "openrouter/free"
+model_name = "openrouter/auto"
 temperature = 0.2
 timeout = 120.0
 api_key = "$OPENROUTER_API_KEY"
