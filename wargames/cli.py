@@ -47,6 +47,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # ladder
     sub.add_parser("ladder", help="Show model ELO leaderboard")
 
+    # stats
+    sub.add_parser("stats", help="Show aggregate game statistics")
+
     # sandbox
     sandbox_p = sub.add_parser("sandbox", help="Run a single-round sandbox game")
     sandbox_p.add_argument("--config", default="config/default.toml", help="Config file path")
@@ -263,6 +266,56 @@ def main(argv: list[str] | None = None):
                 )
 
         asyncio.run(_ladder())
+
+    elif args.command == "stats":
+        db_path = _default_db_path()
+
+        async def _stats():
+            db = Database(db_path)
+            await db.init()
+            stats = await db.get_season_stats()
+            ratings = await db.get_all_ratings()
+            tokens = await db.get_token_totals()
+            await db.close()
+
+            # Season stats
+            print("=== Season Stats ===")
+            print(f"Total rounds : {stats['total_rounds']}")
+            print(f"Red wins     : {stats['red_wins']}")
+            print(f"Blue wins    : {stats['blue_wins']}")
+            print(f"Auto wins    : {stats['auto_wins']}")
+            print()
+
+            # Model ratings
+            print("=== Model Ratings ===")
+            if not ratings:
+                print("No ratings yet.")
+            else:
+                header = f"  {'Model':<30}  {'Rating':>7}  {'W':>5}  {'L':>5}  {'D':>5}"
+                print(header)
+                print("  " + "-" * (len(header) - 2))
+                for row in ratings:
+                    print(
+                        f"  {row['model_name']:<30}  {row['rating']:>7.1f}"
+                        f"  {row['wins']:>5}  {row['losses']:>5}  {row['draws']:>5}"
+                    )
+            print()
+
+            # Token usage
+            print("=== Token Usage ===")
+            total_rounds = stats["total_rounds"] or 1  # avoid division by zero
+            prompt_tok = tokens["prompt_tokens"]
+            completion_tok = tokens["completion_tokens"]
+            total_cost = tokens["cost"]
+            avg_tokens = (prompt_tok + completion_tok) / total_rounds
+            avg_cost = total_cost / total_rounds
+            print(f"Prompt tokens      : {prompt_tok:,}")
+            print(f"Completion tokens  : {completion_tok:,}")
+            print(f"Total cost         : ${total_cost:.4f}")
+            print(f"Avg tokens / round : {avg_tokens:.1f}")
+            print(f"Avg cost / round   : ${avg_cost:.4f}")
+
+        asyncio.run(_stats())
 
     elif args.command == "sandbox":
         config = load_config(Path(args.config))

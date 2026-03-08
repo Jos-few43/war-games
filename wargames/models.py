@@ -103,12 +103,17 @@ class OutputSettings(BaseModel):
     database: DatabaseOutput
 
 
+class CostsSettings(BaseModel):
+    rates: dict[str, float] = Field(default_factory=dict, description="Model name to $/1K tokens rate")
+
+
 class GameConfig(BaseModel):
     game: GameSettings
     draft: DraftSettings
     teams: TeamsSettings
     crawler: CrawlerSettings = CrawlerSettings()
     output: OutputSettings | None = None
+    costs: CostsSettings = CostsSettings()
 
 
 # --- Game state models ---
