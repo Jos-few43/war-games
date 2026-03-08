@@ -72,16 +72,22 @@ class RoundEngine:
 
         # 2. MATCH (turn-based)
         red_score = 0
+        blue_score = 0
         attacks = []
         defenses = []
         bug_reports = []
         patches = []
-        auto_win = False
+        critical_win = False
+        last_defense = None
 
         for turn in range(1, self.turn_limit + 1):
-            # Red attacks
+            # Red attacks — on even turns, judge considers existing Blue defenses
             attack_desc = await self.red.attack(target, red_tools, red_lessons, red_strategies)
-            attack_result = await self.judge.evaluate_attack(attack_desc, target, red_tools)
+            attack_context = target
+            if turn % 2 == 0 and last_defense:
+                attack_context = f"{target}\n\nNote: Blue team has already deployed these defenses: {last_defense}"
+
+            attack_result = await self.judge.evaluate_attack(attack_desc, attack_context, red_tools)
             attack_result.turn = turn
             attack_result.description = attack_desc
 
@@ -99,37 +105,92 @@ class RoundEngine:
             self._emit("attack", {"turn": turn, "description": attack_desc,
                                    "success": attack_result.success, "points": attack_result.points})
 
-            # Check auto-win
+            # Determine attack severity for Blue's info
+            attack_severity = attack_result.severity.value if attack_result.severity else "unknown"
+
+            # Critical attack — Blue gets a contested defense chance
             if attack_result.auto_win:
-                auto_win = True
-                # Blue still gets to respond (for the debrief) but match is over
-                defense_desc = await self.blue.defend(attack_desc, target, blue_tools, blue_lessons, blue_strategies)
-                defenses.append(DefenseResult(turn=turn, description=defense_desc))
-                break
+                defense_desc = await self.blue.defend(
+                    attack_desc, target, blue_tools, blue_lessons, blue_strategies,
+                    attack_severity=attack_severity,
+                )
+                blocked, effectiveness, reasoning = await self.judge.evaluate_defense(
+                    attack_desc, defense_desc, blue_tools,
+                )
 
-            # Blue defends
-            defense_desc = await self.blue.defend(attack_desc, target, blue_tools, blue_lessons, blue_strategies)
-            blocked, reasoning = await self.judge.evaluate_defense(attack_desc, defense_desc, blue_tools)
+                if effectiveness >= 0.5:
+                    # Blue neutralizes the critical attack
+                    blue_score += 5
+                    defenses.append(DefenseResult(
+                        turn=turn, description=defense_desc,
+                        blocked=True, effectiveness=effectiveness,
+                        points_earned=5, points_deducted=0,
+                    ))
+                    self._emit("defense", {"turn": turn, "blocked": True,
+                                           "critical_neutralized": True,
+                                           "blue_score": blue_score, "red_score": red_score})
+                    last_defense = defense_desc
+                else:
+                    # Blue fails — Red wins the round
+                    critical_win = True
+                    defenses.append(DefenseResult(
+                        turn=turn, description=defense_desc,
+                        blocked=False, effectiveness=effectiveness,
+                    ))
+                    self._emit("defense", {"turn": turn, "blocked": False,
+                                           "critical_win": True, "red_score": red_score})
+                    break
+                continue
 
-            points_deducted = 2 if blocked else 0
-            if blocked:
+            # Blue defends (normal turn)
+            defense_desc = await self.blue.defend(
+                attack_desc, target, blue_tools, blue_lessons, blue_strategies,
+                attack_severity=attack_severity,
+            )
+            blocked, effectiveness, reasoning = await self.judge.evaluate_defense(
+                attack_desc, defense_desc, blue_tools,
+            )
+
+            # Graded scoring based on effectiveness
+            points_deducted = 0
+            points_earned = 0
+            if effectiveness >= 0.7:
+                # Full block
+                points_earned = 3
+                points_deducted = 2
+                blue_score += points_earned
+                red_score = max(0, red_score - points_deducted)
+            elif effectiveness >= 0.3:
+                # Partial mitigation
+                points_earned = 1
+                points_deducted = 1
+                blue_score += points_earned
                 red_score = max(0, red_score - points_deducted)
 
             defenses.append(DefenseResult(
                 turn=turn, description=defense_desc,
-                blocked=blocked, points_deducted=points_deducted,
+                blocked=blocked, effectiveness=effectiveness,
+                points_deducted=points_deducted, points_earned=points_earned,
             ))
-            self._emit("defense", {"turn": turn, "blocked": blocked, "red_score": red_score})
+            last_defense = defense_desc
+            self._emit("defense", {"turn": turn, "blocked": blocked,
+                                   "effectiveness": effectiveness,
+                                   "red_score": red_score, "blue_score": blue_score})
 
             # Check if red crossed threshold
             if red_score >= self.score_threshold:
                 break
+            # Check if blue crossed threshold (decisive win)
+            if blue_score >= self.score_threshold:
+                break
 
         # 3. DETERMINE OUTCOME
-        if auto_win:
-            outcome = MatchOutcome.RED_AUTO_WIN
+        if critical_win:
+            outcome = MatchOutcome.RED_CRITICAL_WIN
         elif red_score >= self.score_threshold:
             outcome = MatchOutcome.RED_WIN
+        elif blue_score >= self.score_threshold:
+            outcome = MatchOutcome.BLUE_DECISIVE_WIN
         else:
             outcome = MatchOutcome.BLUE_WIN
 
@@ -139,7 +200,7 @@ class RoundEngine:
             for a in attacks
         )
         defenses_summary = "\n".join(
-            f"Turn {d.turn}: {'BLOCKED' if d.blocked else 'MISSED'} - {d.description[:80]}"
+            f"Turn {d.turn}: {'BLOCKED' if d.blocked else 'MISSED'} (eff={d.effectiveness:.1f}, +{d.points_earned}pts) - {d.description[:80]}"
             for d in defenses
         )
 
@@ -152,6 +213,7 @@ class RoundEngine:
             phase=phase,
             outcome=outcome,
             red_score=red_score,
+            blue_score=blue_score,
             blue_threshold=self.score_threshold,
             red_draft=red_draft_picks,
             blue_draft=blue_draft_picks,
@@ -167,7 +229,7 @@ class RoundEngine:
         if self.db:
             await self.db.save_round(result)
 
-        self._emit("round_complete", {"outcome": outcome.value, "red_score": red_score})
+        self._emit("round_complete", {"outcome": outcome.value, "red_score": red_score, "blue_score": blue_score})
         return result
 
     def _default_target(self, phase: Phase) -> str:

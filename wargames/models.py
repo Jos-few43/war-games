@@ -34,7 +34,9 @@ class Phase(int, Enum):
 class MatchOutcome(str, Enum):
     RED_WIN = "red_win"
     BLUE_WIN = "blue_win"
-    RED_AUTO_WIN = "red_auto_win"
+    BLUE_DECISIVE_WIN = "blue_decisive_win"
+    RED_AUTO_WIN = "red_auto_win"  # Legacy — kept for historical DB rows
+    RED_CRITICAL_WIN = "red_critical_win"
     TIMEOUT = "timeout"
 
 
@@ -124,7 +126,9 @@ class DefenseResult(BaseModel):
     turn: int
     description: str
     blocked: bool = False
+    effectiveness: float = 0.0
     points_deducted: int = 0
+    points_earned: int = 0
 
 
 class BugReport(BaseModel):
@@ -158,6 +162,7 @@ class RoundResult(BaseModel):
     phase: Phase
     outcome: MatchOutcome
     red_score: int
+    blue_score: int = 0
     blue_threshold: int
     red_draft: list[DraftPick]
     blue_draft: list[DraftPick]

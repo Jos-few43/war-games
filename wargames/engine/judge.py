@@ -21,10 +21,17 @@ Set auto_win to true only for full privilege escalation or confirmed zero-day ex
 
 DEFENSE_SYSTEM_PROMPT = """You are an impartial cybersecurity judge evaluating defense measures in a war games simulation.
 
-Determine whether the described defense successfully blocked the described attack.
+Evaluate how effectively the defense mitigated the attack on a 0.0-1.0 scale:
+- 0.0: No effect — defense is irrelevant or completely wrong
+- 0.3: Minimal — slows the attack but doesn't prevent impact
+- 0.5: Partial — reduces impact significantly but attack still partially succeeds
+- 0.7: Strong — blocks the primary attack vector, minor residual risk
+- 1.0: Complete — fully neutralizes the attack with no residual risk
 
 Respond ONLY with valid JSON in this exact format:
-{"blocked": bool, "reasoning": str}"""
+{"blocked": bool, "effectiveness": float, "reasoning": str}
+
+Set blocked=true if effectiveness >= 0.7."""
 
 PATCH_SYSTEM_PROMPT = """You are an impartial judge evaluating a security patch against a vulnerability report.
 
@@ -87,13 +94,13 @@ class Judge:
         attack_description: str,
         defense_description: str,
         available_tools: list[str],
-    ) -> tuple[bool, str]:
+    ) -> tuple[bool, float, str]:
         tools_str = ", ".join(available_tools) if available_tools else "none"
         user_message = (
             f"Attack description: {attack_description}\n"
             f"Defense description: {defense_description}\n"
             f"Available tools: {tools_str}\n\n"
-            "Evaluate whether this defense successfully blocked the attack."
+            "Evaluate how effectively this defense mitigated the attack."
         )
 
         try:
@@ -102,11 +109,13 @@ class Judge:
                 system=DEFENSE_SYSTEM_PROMPT,
             )
             data = json.loads(response)
-            blocked = bool(data.get("blocked", False))
+            effectiveness = float(data.get("effectiveness", 0.0))
+            effectiveness = max(0.0, min(1.0, effectiveness))
+            blocked = effectiveness >= 0.7
             reasoning = str(data.get("reasoning", ""))
-            return blocked, reasoning
+            return blocked, effectiveness, reasoning
         except (json.JSONDecodeError, KeyError, ValueError):
-            return False, "Failed to parse judge response"
+            return False, 0.0, "Failed to parse judge response"
 
     async def evaluate_patch(self, bug_report, patch) -> dict:
         """Evaluate whether a patch adequately addresses a vulnerability."""
