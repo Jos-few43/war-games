@@ -1,5 +1,5 @@
-# Local teams + cloud judge via LiteLLM
-# Red/Blue use Ollama, Judge uses Claude via LiteLLM green (port 4002)
+# Local teams + cloud judge via antigravity bridge
+# Red/Blue use Ollama, Judge uses Claude via antigravity bridge (port 4003)
 
 [game]
 name = "season-cloud-judge"
@@ -26,9 +26,10 @@ temperature = 0.4
 
 [teams.judge]
 name = "Judge"
-model = "http://localhost:4002/v1"
+model = "http://localhost:4003/v1"
 model_name = "claude-sonnet-4-5"
 temperature = 0.2
+timeout = 180.0
 
 [crawler]
 enabled = true

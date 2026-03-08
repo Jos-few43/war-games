@@ -1,6 +1,7 @@
 from __future__ import annotations
+import os
 from enum import Enum
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class DraftStyle(str, Enum):
@@ -58,6 +59,13 @@ class TeamSettings(BaseModel):
     model_name: str
     temperature: float = Field(ge=0.0, le=2.0)
     timeout: float = Field(default=120.0, description="HTTP timeout per LLM call in seconds")
+    api_key: str = Field(default="", description="API key or env var ref like $LITELLM_MASTER_KEY")
+
+    @model_validator(mode="after")
+    def resolve_env_vars(self):
+        if self.api_key.startswith("$"):
+            self.api_key = os.environ.get(self.api_key[1:], "")
+        return self
 
 
 class TeamsSettings(BaseModel):

@@ -1,38 +1,45 @@
-# All teams use cloud models via LiteLLM green (port 4002)
-# Maximum quality, higher API cost
+# All teams use free cloud models via OpenRouter
+# Red=405B attacker, Blue=120B defender, Judge=70B referee
+# No API costs — all models are free tier on OpenRouter
 
 [game]
-name = "season-full-cloud"
-rounds = 10
-turn_limit = 8
+name = "season-cloud-free"
+rounds = 5
+turn_limit = 6
 score_threshold = 10
 phase_advance_score = 7.5
 
 [draft]
-picks_per_team = 5
+picks_per_team = 4
 style = "snake"
 
 [teams.red]
 name = "Red Team"
-model = "http://localhost:4002/v1"
-model_name = "claude-sonnet-4-5"
+model = "https://openrouter.ai/api/v1"
+model_name = "nousresearch/hermes-3-llama-3.1-405b:free"
 temperature = 0.8
+timeout = 120.0
+api_key = "$OPENROUTER_API_KEY"
 
 [teams.blue]
 name = "Blue Team"
-model = "http://localhost:4002/v1"
-model_name = "claude-haiku-4-5"
+model = "https://openrouter.ai/api/v1"
+model_name = "openai/gpt-oss-120b:free"
 temperature = 0.4
+timeout = 120.0
+api_key = "$OPENROUTER_API_KEY"
 
 [teams.judge]
 name = "Judge"
-model = "http://localhost:4002/v1"
-model_name = "claude-sonnet-4-5"
+model = "https://openrouter.ai/api/v1"
+model_name = "meta-llama/llama-3.3-70b-instruct:free"
 temperature = 0.2
+timeout = 120.0
+api_key = "$OPENROUTER_API_KEY"
 
 [crawler]
-enabled = true
-sources = ["nvd", "exploitdb"]
+enabled = false
+sources = []
 refresh_interval = "24h"
 
 [output.vault]
