@@ -129,8 +129,57 @@ def main(argv: list[str] | None = None):
         asyncio.run(_crawl())
 
     elif args.command == "report":
-        print(f"Viewing round {args.round_number}")
-        # TODO: implement report viewer
+        db_path = _default_db_path()
+
+        async def _report():
+            db = Database(db_path)
+            await db.init()
+            try:
+                result = await db.get_round(args.round_number)
+            except KeyError:
+                print(f"Round {args.round_number} not found.")
+                await db.close()
+                return
+            await db.close()
+
+            print(f"=== Round {result.round_number} ===")
+            print(f"Phase: {result.phase.name}  |  Outcome: {result.outcome.value}")
+            print(f"Score: Red {result.red_score} — Blue {result.blue_score} (threshold {result.blue_threshold})")
+            print()
+
+            if result.red_draft or result.blue_draft:
+                print("-- Draft --")
+                for pick in result.red_draft:
+                    print(f"  RED  {pick.resource_name} ({pick.resource_category})")
+                for pick in result.blue_draft:
+                    print(f"  BLUE {pick.resource_name} ({pick.resource_category})")
+                print()
+
+            print("-- Attacks --")
+            for a in result.attacks:
+                status = "HIT" if a.success else "MISS"
+                sev = f" [{a.severity.value}]" if a.severity else ""
+                print(f"  T{a.turn}: {status}{sev} +{a.points}pts -- {a.description[:80]}")
+            print()
+
+            print("-- Defenses --")
+            for d in result.defenses:
+                status = "BLOCKED" if d.blocked else "MISSED"
+                print(f"  T{d.turn}: {status} -{d.points_deducted}pts -- {d.description[:80]}")
+            print()
+
+            if result.bug_reports:
+                print("-- Bug Reports --")
+                for b in result.bug_reports:
+                    print(f"  [{b.severity.value}] {b.title}")
+                print()
+
+            if result.patches:
+                print("-- Patches --")
+                for p in result.patches:
+                    print(f"  {p.title} -- fixes: {p.fixes[:60]}")
+
+        asyncio.run(_report())
 
     elif args.command == "export":
         print(f"Exporting in {args.format} format")

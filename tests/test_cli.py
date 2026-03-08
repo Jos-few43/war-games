@@ -62,3 +62,36 @@ def test_crawl_calls_crawlers(tmp_path):
         main(["crawl", "--sources", "nvd,exploitdb"])
         mock_nvd.fetch.assert_called_once()
         mock_edb.fetch.assert_called_once()
+
+
+def test_report_prints_round_summary(tmp_path, capsys):
+    """report command should print a formatted round summary."""
+    from wargames.models import RoundResult, Phase, MatchOutcome, AttackResult, DefenseResult, Severity
+
+    mock_result = RoundResult(
+        round_number=1,
+        phase=Phase.PROMPT_INJECTION,
+        outcome=MatchOutcome.RED_WIN,
+        red_score=12,
+        blue_score=3,
+        blue_threshold=10,
+        red_draft=[],
+        blue_draft=[],
+        attacks=[AttackResult(turn=1, description="SQL injection", severity=Severity.HIGH, points=5, success=True)],
+        defenses=[DefenseResult(turn=1, description="WAF block", blocked=True, points_deducted=3)],
+    )
+
+    mock_db = MagicMock()
+    mock_db.init = AsyncMock()
+    mock_db.get_round = AsyncMock(return_value=mock_result)
+    mock_db.close = AsyncMock()
+
+    with patch("wargames.cli.Database", return_value=mock_db), \
+         patch("wargames.cli._default_db_path", return_value=tmp_path / "test.db"):
+        from wargames.cli import main
+        main(["report", "1"])
+
+    output = capsys.readouterr().out
+    assert "Round 1" in output
+    assert "red_win" in output
+    assert "SQL injection" in output
