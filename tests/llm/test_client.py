@@ -98,3 +98,72 @@ async def test_chat_sends_auth_header():
     client = LLMClient(settings)
     assert client._http.headers.get("authorization") == "Bearer sk-test-key"
     await client.close()
+
+
+@pytest.fixture
+def fallback_settings():
+    return TeamSettings(
+        name="Fallback Team",
+        model="http://cloud:4002/v1",
+        model_name="cloud-model",
+        temperature=0.7,
+        fallback_model="http://localhost:11434/v1",
+        fallback_model_name="qwen3:4b",
+    )
+
+
+@pytest.mark.asyncio
+async def test_chat_falls_back_on_primary_exhaustion(fallback_settings):
+    """After primary retries exhausted, should try fallback model."""
+    client = LLMClient(fallback_settings)
+    fb_success = _ok_response("fallback response")
+
+    with patch.object(
+        client._http, "post",
+        side_effect=httpx.ReadTimeout("timeout"),
+    ), patch.object(
+        client._fallback_http, "post",
+        return_value=fb_success,
+    ):
+        result = await client.chat([{"role": "user", "content": "Hi"}])
+        assert result == "fallback response"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_chat_no_fallback_when_primary_succeeds(fallback_settings):
+    """Fallback should NOT be used if primary succeeds."""
+    client = LLMClient(fallback_settings)
+    mock_success = _ok_response("primary response")
+    with patch.object(client._http, "post", return_value=mock_success):
+        result = await client.chat([{"role": "user", "content": "Hi"}])
+        assert result == "primary response"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_chat_no_fallback_configured(team_settings):
+    """Without fallback configured, should raise after primary fails."""
+    client = LLMClient(team_settings)
+    with patch.object(
+        client._http, "post",
+        side_effect=httpx.ReadTimeout("timeout"),
+    ):
+        with pytest.raises(httpx.ReadTimeout):
+            await client.chat([{"role": "user", "content": "Hi"}])
+
+
+@pytest.mark.asyncio
+async def test_fallback_raises_when_both_fail(fallback_settings):
+    """If both primary and fallback fail, should raise."""
+    client = LLMClient(fallback_settings)
+    with patch.object(
+        client._http, "post",
+        side_effect=httpx.ReadTimeout("primary timeout"),
+    ), patch.object(
+        client._fallback_http, "post",
+        side_effect=httpx.ReadTimeout("fallback timeout"),
+    ):
+        with pytest.raises(httpx.ReadTimeout):
+            await client.chat([{"role": "user", "content": "Hi"}])
+    await client.close()

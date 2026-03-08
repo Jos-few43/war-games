@@ -1,0 +1,55 @@
+# Cloud primary (OpenRouter via LiteLLM green) with Ollama local fallback.
+# If cloud is down or slow, automatically retries with local qwen3:4b.
+
+[game]
+name = "season-fallback"
+rounds = 3
+turn_limit = 4
+score_threshold = 10
+phase_advance_score = 7.5
+
+[draft]
+picks_per_team = 3
+style = "snake"
+
+[teams.red]
+name = "Red Team"
+model = "http://localhost:4003"
+model_name = "llama-3-70b"
+fallback_model = "http://localhost:11434/v1"
+fallback_model_name = "qwen3:4b"
+temperature = 0.8
+timeout = 60.0
+api_key = "$LITELLM_MASTER_KEY"
+
+[teams.blue]
+name = "Blue Team"
+model = "http://localhost:4003"
+model_name = "llama-3-70b"
+fallback_model = "http://localhost:11434/v1"
+fallback_model_name = "qwen3:4b"
+temperature = 0.4
+timeout = 60.0
+api_key = "$LITELLM_MASTER_KEY"
+
+[teams.judge]
+name = "Judge"
+model = "http://localhost:4003"
+model_name = "llama-3-70b"
+fallback_model = "http://localhost:11434/v1"
+fallback_model_name = "qwen3:4b"
+temperature = 0.2
+timeout = 90.0
+api_key = "$LITELLM_MASTER_KEY"
+
+[crawler]
+enabled = true
+sources = ["nvd", "exploitdb"]
+refresh_interval = "24h"
+
+[output.vault]
+enabled = true
+path = "~/OpenClaw-Vault/WarGames"
+
+[output.database]
+path = "~/.local/share/wargames/state.db"

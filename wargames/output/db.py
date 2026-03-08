@@ -352,6 +352,16 @@ class Database:
             blue_debrief=row["blue_debrief"] or "",
         )
 
+    async def get_all_rounds(self) -> list[RoundResult]:
+        cursor = await self._conn.execute(
+            "SELECT round_number FROM rounds ORDER BY round_number"
+        )
+        rows = await cursor.fetchall()
+        results = []
+        for row in rows:
+            results.append(await self.get_round(row["round_number"]))
+        return results
+
     async def get_season_stats(self) -> dict:
         cursor = await self._conn.execute(
             """

@@ -62,11 +62,16 @@ class TeamSettings(BaseModel):
     temperature: float = Field(ge=0.0, le=2.0)
     timeout: float = Field(default=120.0, description="HTTP timeout per LLM call in seconds")
     api_key: str = Field(default="", description="API key or env var ref like $LITELLM_MASTER_KEY")
+    fallback_model: str = Field(default="", description="Fallback base URL")
+    fallback_model_name: str = Field(default="", description="Fallback model name")
+    fallback_api_key: str = Field(default="", description="Fallback API key or env var ref")
 
     @model_validator(mode="after")
     def resolve_env_vars(self):
         if self.api_key.startswith("$"):
             self.api_key = os.environ.get(self.api_key[1:], "")
+        if self.fallback_api_key.startswith("$"):
+            self.fallback_api_key = os.environ.get(self.fallback_api_key[1:], "")
         return self
 
 

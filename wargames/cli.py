@@ -5,6 +5,11 @@ import signal
 import sys
 from pathlib import Path
 
+from wargames.crawler.cve import NVDCrawler
+from wargames.crawler.exploitdb import ExploitDBCrawler
+from wargames.models import MatchOutcome
+from wargames.output.db import Database
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="wargames", description="War Games - LLM Red/Blue Team Competition")
@@ -35,8 +40,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # export
     export_p = sub.add_parser("export", help="Export season results")
     export_p.add_argument("--format", default="markdown", choices=["markdown", "json"])
+    export_p.add_argument("--output", default=None, help="Output file path (default: stdout)")
 
     return parser.parse_args(argv)
+
+
+def _default_db_path() -> Path:
+    return Path("~/.local/share/wargames/state.db").expanduser()
 
 
 def _send_signal(sig: int):
@@ -72,7 +82,6 @@ def main(argv: list[str] | None = None):
         app.run()
 
     elif args.command == "status":
-        from wargames.output.db import Database
         db_path = Path("~/.local/share/wargames/state.db").expanduser()
 
         async def _status():
@@ -96,16 +105,127 @@ def main(argv: list[str] | None = None):
         _send_signal(signal.SIGUSR2)
 
     elif args.command == "crawl":
-        print(f"Crawling sources: {args.sources}")
-        # TODO: implement standalone crawl
+        sources = [s.strip() for s in args.sources.split(",")]
+        db_path = _default_db_path()
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        async def _crawl():
+            db = Database(db_path)
+            await db.init()
+            total = 0
+            if "nvd" in sources:
+                crawler = NVDCrawler()
+                results = await crawler.fetch()
+                await crawler.store(db, results)
+                print(f"NVD: {len(results)} CVEs")
+                total += len(results)
+            if "exploitdb" in sources:
+                crawler = ExploitDBCrawler()
+                results = await crawler.fetch()
+                await crawler.store(db, results)
+                print(f"ExploitDB: {len(results)} CVEs")
+                total += len(results)
+            await db.close()
+            print(f"Total: {total} CVEs crawled")
+
+        asyncio.run(_crawl())
 
     elif args.command == "report":
-        print(f"Viewing round {args.round_number}")
-        # TODO: implement report viewer
+        db_path = _default_db_path()
+
+        async def _report():
+            db = Database(db_path)
+            await db.init()
+            try:
+                result = await db.get_round(args.round_number)
+            except KeyError:
+                print(f"Round {args.round_number} not found.")
+                await db.close()
+                return
+            await db.close()
+
+            print(f"=== Round {result.round_number} ===")
+            print(f"Phase: {result.phase.name}  |  Outcome: {result.outcome.value}")
+            print(f"Score: Red {result.red_score} — Blue {result.blue_score} (threshold {result.blue_threshold})")
+            print()
+
+            if result.red_draft or result.blue_draft:
+                print("-- Draft --")
+                for pick in result.red_draft:
+                    print(f"  RED  {pick.resource_name} ({pick.resource_category})")
+                for pick in result.blue_draft:
+                    print(f"  BLUE {pick.resource_name} ({pick.resource_category})")
+                print()
+
+            print("-- Attacks --")
+            for a in result.attacks:
+                status = "HIT" if a.success else "MISS"
+                sev = f" [{a.severity.value}]" if a.severity else ""
+                print(f"  T{a.turn}: {status}{sev} +{a.points}pts -- {a.description[:80]}")
+            print()
+
+            print("-- Defenses --")
+            for d in result.defenses:
+                status = "BLOCKED" if d.blocked else "MISSED"
+                print(f"  T{d.turn}: {status} -{d.points_deducted}pts -- {d.description[:80]}")
+            print()
+
+            if result.bug_reports:
+                print("-- Bug Reports --")
+                for b in result.bug_reports:
+                    print(f"  [{b.severity.value}] {b.title}")
+                print()
+
+            if result.patches:
+                print("-- Patches --")
+                for p in result.patches:
+                    print(f"  {p.title} -- fixes: {p.fixes[:60]}")
+
+        asyncio.run(_report())
 
     elif args.command == "export":
-        print(f"Exporting in {args.format} format")
-        # TODO: implement export
+        db_path = _default_db_path()
+
+        async def _export():
+            db = Database(db_path)
+            await db.init()
+            results = await db.get_all_rounds()
+            await db.close()
+
+            if not results:
+                print("No rounds found.")
+                return
+
+            if args.format == "json":
+                import json
+                data = {
+                    "rounds": [r.model_dump(mode="json") for r in results],
+                    "summary": {
+                        "total_rounds": len(results),
+                        "red_wins": sum(1 for r in results if r.outcome in (MatchOutcome.RED_WIN, MatchOutcome.RED_AUTO_WIN, MatchOutcome.RED_CRITICAL_WIN)),
+                        "blue_wins": sum(1 for r in results if r.outcome in (MatchOutcome.BLUE_WIN, MatchOutcome.BLUE_DECISIVE_WIN)),
+                    },
+                }
+                output = json.dumps(data, indent=2)
+            else:
+                lines = ["# Season Report", ""]
+                lines.append("| Round | Phase | Outcome | Red | Blue |")
+                lines.append("|-------|-------|---------|-----|------|")
+                for r in results:
+                    lines.append(f"| {r.round_number} | {r.phase.name} | {r.outcome.value} | {r.red_score} | {r.blue_score} |")
+                lines.append("")
+                red_w = sum(1 for r in results if r.outcome in (MatchOutcome.RED_WIN, MatchOutcome.RED_AUTO_WIN, MatchOutcome.RED_CRITICAL_WIN))
+                blue_w = sum(1 for r in results if r.outcome in (MatchOutcome.BLUE_WIN, MatchOutcome.BLUE_DECISIVE_WIN))
+                lines.append(f"**Red wins:** {red_w}  |  **Blue wins:** {blue_w}  |  **Total:** {len(results)}")
+                output = "\n".join(lines)
+
+            if args.output:
+                Path(args.output).write_text(output)
+                print(f"Exported to {args.output}")
+            else:
+                print(output)
+
+        asyncio.run(_export())
 
 
 if __name__ == "__main__":
