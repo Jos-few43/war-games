@@ -42,6 +42,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     export_p.add_argument("--format", default="markdown", choices=["markdown", "json"])
     export_p.add_argument("--output", default=None, help="Output file path (default: stdout)")
 
+    # ladder
+    sub.add_parser("ladder", help="Show model ELO leaderboard")
+
     return parser.parse_args(argv)
 
 
@@ -226,6 +229,31 @@ def main(argv: list[str] | None = None):
                 print(output)
 
         asyncio.run(_export())
+
+    elif args.command == "ladder":
+        db_path = _default_db_path()
+
+        async def _ladder():
+            db = Database(db_path)
+            await db.init()
+            ratings = await db.get_all_ratings()
+            await db.close()
+
+            if not ratings:
+                print("No ratings yet. Run a season first.")
+                return
+
+            header = f"{'Rank':>4}  {'Model':<30}  {'Rating':>7}  {'W':>5}  {'L':>5}  {'D':>5}  Last Played"
+            print(header)
+            print("-" * len(header))
+            for rank, row in enumerate(ratings, start=1):
+                last = row.get("last_played") or "—"
+                print(
+                    f"{rank:>4}  {row['model_name']:<30}  {row['rating']:>7.1f}"
+                    f"  {row['wins']:>5}  {row['losses']:>5}  {row['draws']:>5}  {last}"
+                )
+
+        asyncio.run(_ladder())
 
 
 if __name__ == "__main__":
