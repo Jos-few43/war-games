@@ -106,6 +106,22 @@ class OutputSettings(BaseModel):
 class CostsSettings(BaseModel):
     rates: dict[str, float] = Field(default_factory=dict, description="Model name to $/1K tokens rate")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _absorb_flat_rates(cls, data: object) -> object:
+        """Allow flat TOML [costs] sections where keys are model names directly."""
+        if not isinstance(data, dict):
+            return data
+        known_fields = {"rates"}
+        flat_rates = {k: v for k, v in data.items() if k not in known_fields and isinstance(v, (int, float))}
+        if flat_rates:
+            merged = dict(data.get("rates") or {})
+            merged.update(flat_rates)
+            cleaned = {k: v for k, v in data.items() if k in known_fields}
+            cleaned["rates"] = merged
+            return cleaned
+        return data
+
 
 class GameConfig(BaseModel):
     game: GameSettings

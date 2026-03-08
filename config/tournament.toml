@@ -1,9 +1,8 @@
-# Cloud primary (OpenRouter via LiteLLM green) with Ollama local fallback.
-# If cloud is down or slow, automatically retries with local qwen3:4b.
+# Tournament mode preset with loadouts and cost tracking.
 
 [game]
-name = "season-fallback"
-rounds = 3
+name = "tournament-01"
+rounds = 5
 turn_limit = 4
 score_threshold = 10
 phase_advance_score = 7.5
@@ -21,6 +20,7 @@ fallback_model_name = "qwen3:4b"
 temperature = 0.8
 timeout = 60.0
 api_key = "$LITELLM_MASTER_KEY"
+loadout = "aggressive"
 
 [teams.blue]
 name = "Blue Team"
@@ -31,6 +31,7 @@ fallback_model_name = "qwen3:4b"
 temperature = 0.4
 timeout = 60.0
 api_key = "$LITELLM_MASTER_KEY"
+loadout = "defensive"
 
 [teams.judge]
 name = "Judge"
@@ -47,13 +48,13 @@ enabled = true
 sources = ["nvd", "exploitdb"]
 refresh_interval = "24h"
 
+[costs]
+"llama-3-70b" = 0.00059
+"qwen3:4b" = 0.0
+
 [output.vault]
 enabled = true
 path = "~/OpenClaw-Vault/WarGames"
 
 [output.database]
 path = "~/.local/share/wargames/state.db"
-
-[costs]
-"llama-3-70b" = 0.00059
-"qwen3:4b" = 0.0
