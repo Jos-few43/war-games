@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 from wargames.config import load_config
-from wargames.models import GameConfig
+from wargames.models import GameConfig, TeamSettings
 
 
 def test_load_default_config():
@@ -16,6 +16,46 @@ def test_load_default_config():
     assert config.teams.red.name == "Red Team"
     assert config.teams.blue.name == "Blue Team"
     assert config.teams.judge.model_name == "claude-sonnet-4-5"
+
+
+def test_team_settings_fallback_fields():
+    ts = TeamSettings(
+        name="Test",
+        model="http://cloud:4002",
+        model_name="openrouter/auto",
+        temperature=0.7,
+        fallback_model="http://localhost:11434",
+        fallback_model_name="qwen3:4b",
+        fallback_api_key="",
+    )
+    assert ts.fallback_model == "http://localhost:11434"
+    assert ts.fallback_model_name == "qwen3:4b"
+    assert ts.fallback_api_key == ""
+
+
+def test_team_settings_fallback_defaults():
+    ts = TeamSettings(
+        name="Test",
+        model="http://cloud:4002",
+        model_name="openrouter/auto",
+        temperature=0.7,
+    )
+    assert ts.fallback_model == ""
+    assert ts.fallback_model_name == ""
+
+
+def test_team_settings_fallback_env_var_resolution():
+    import os
+    os.environ["TEST_FALLBACK_KEY"] = "fb-secret"
+    ts = TeamSettings(
+        name="Test",
+        model="http://cloud:4002",
+        model_name="openrouter/auto",
+        temperature=0.7,
+        fallback_api_key="$TEST_FALLBACK_KEY",
+    )
+    assert ts.fallback_api_key == "fb-secret"
+    del os.environ["TEST_FALLBACK_KEY"]
 
 
 def test_config_validates_score_threshold():
