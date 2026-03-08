@@ -7,6 +7,8 @@ from pathlib import Path
 
 from wargames.crawler.cve import NVDCrawler
 from wargames.crawler.exploitdb import ExploitDBCrawler
+from wargames.config import load_config
+from wargames.engine.sandbox import SandboxRunner
 from wargames.models import MatchOutcome
 from wargames.output.db import Database
 
@@ -45,6 +47,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # ladder
     sub.add_parser("ladder", help="Show model ELO leaderboard")
 
+    # sandbox
+    sandbox_p = sub.add_parser("sandbox", help="Run a single-round sandbox game")
+    sandbox_p.add_argument("--config", default="config/default.toml", help="Config file path")
+    sandbox_p.add_argument(
+        "--loadout", default=None,
+        help="Loadout overrides: red=aggressive,blue=defensive",
+    )
+
     return parser.parse_args(argv)
 
 
@@ -72,7 +82,6 @@ def main(argv: list[str] | None = None):
             level=logging.INFO,
             format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         )
-        from wargames.config import load_config
         from wargames.worker import Worker
         config = load_config(Path(args.config))
         worker = Worker(config)
@@ -254,6 +263,63 @@ def main(argv: list[str] | None = None):
                 )
 
         asyncio.run(_ladder())
+
+    elif args.command == "sandbox":
+        config = load_config(Path(args.config))
+
+        # Parse --loadout into a dict, e.g. "red=aggressive,blue=defensive"
+        loadout_overrides: dict[str, str] | None = None
+        if args.loadout:
+            loadout_overrides = {}
+            for item in args.loadout.split(","):
+                item = item.strip()
+                if "=" in item:
+                    key, _, value = item.partition("=")
+                    loadout_overrides[key.strip()] = value.strip()
+
+        runner = SandboxRunner(config)
+
+        async def _sandbox():
+            result = await runner.run(loadout_overrides=loadout_overrides)
+
+            print(f"=== Sandbox Round ===")
+            print(f"Phase: {result.phase.name}  |  Outcome: {result.outcome.value}")
+            print(f"Score: Red {result.red_score} — Blue {result.blue_score} (threshold {result.blue_threshold})")
+            print()
+
+            if result.red_draft or result.blue_draft:
+                print("-- Draft --")
+                for pick in result.red_draft:
+                    print(f"  RED  {pick.resource_name} ({pick.resource_category})")
+                for pick in result.blue_draft:
+                    print(f"  BLUE {pick.resource_name} ({pick.resource_category})")
+                print()
+
+            print("-- Attacks --")
+            for a in result.attacks:
+                status = "HIT" if a.success else "MISS"
+                sev = f" [{a.severity.value}]" if a.severity else ""
+                print(f"  T{a.turn}: {status}{sev} +{a.points}pts -- {a.description[:80]}")
+            print()
+
+            print("-- Defenses --")
+            for d in result.defenses:
+                status = "BLOCKED" if d.blocked else "MISSED"
+                print(f"  T{d.turn}: {status} -{d.points_deducted}pts -- {d.description[:80]}")
+            print()
+
+            if result.bug_reports:
+                print("-- Bug Reports --")
+                for b in result.bug_reports:
+                    print(f"  [{b.severity.value}] {b.title}")
+                print()
+
+            if result.patches:
+                print("-- Patches --")
+                for p in result.patches:
+                    print(f"  {p.title} -- fixes: {p.fixes[:60]}")
+
+        asyncio.run(_sandbox())
 
 
 if __name__ == "__main__":
