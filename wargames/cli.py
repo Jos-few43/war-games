@@ -5,6 +5,10 @@ import signal
 import sys
 from pathlib import Path
 
+from wargames.crawler.cve import NVDCrawler
+from wargames.crawler.exploitdb import ExploitDBCrawler
+from wargames.output.db import Database
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="wargames", description="War Games - LLM Red/Blue Team Competition")
@@ -37,6 +41,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     export_p.add_argument("--format", default="markdown", choices=["markdown", "json"])
 
     return parser.parse_args(argv)
+
+
+def _default_db_path() -> Path:
+    return Path("~/.local/share/wargames/state.db").expanduser()
 
 
 def _send_signal(sig: int):
@@ -72,7 +80,6 @@ def main(argv: list[str] | None = None):
         app.run()
 
     elif args.command == "status":
-        from wargames.output.db import Database
         db_path = Path("~/.local/share/wargames/state.db").expanduser()
 
         async def _status():
@@ -96,8 +103,30 @@ def main(argv: list[str] | None = None):
         _send_signal(signal.SIGUSR2)
 
     elif args.command == "crawl":
-        print(f"Crawling sources: {args.sources}")
-        # TODO: implement standalone crawl
+        sources = [s.strip() for s in args.sources.split(",")]
+        db_path = _default_db_path()
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        async def _crawl():
+            db = Database(db_path)
+            await db.init()
+            total = 0
+            if "nvd" in sources:
+                crawler = NVDCrawler()
+                results = await crawler.fetch()
+                await crawler.store(db, results)
+                print(f"NVD: {len(results)} CVEs")
+                total += len(results)
+            if "exploitdb" in sources:
+                crawler = ExploitDBCrawler()
+                results = await crawler.fetch()
+                await crawler.store(db, results)
+                print(f"ExploitDB: {len(results)} CVEs")
+                total += len(results)
+            await db.close()
+            print(f"Total: {total} CVEs crawled")
+
+        asyncio.run(_crawl())
 
     elif args.command == "report":
         print(f"Viewing round {args.round_number}")
