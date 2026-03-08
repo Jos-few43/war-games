@@ -83,3 +83,34 @@ def test_append_knowledge(writer):
     content = path.read_text()
     assert "Round 1" in content
     assert "Round 2" in content
+
+
+def test_write_strategy_update(writer):
+    from wargames.models import Strategy
+    strategies = [
+        Strategy(team="red", phase=1, strategy_type="attack",
+                 content="Use union-based SQLi", win_rate=0.8,
+                 usage_count=3, created_round=1),
+    ]
+    writer.write_strategy_update(round_number=1, phase_name="prompt-injection", strategies=strategies)
+    path = writer.base_path / "strategies" / "phase-prompt-injection.md"
+    assert path.exists()
+    content = path.read_text()
+    assert "union-based SQLi" in content
+    assert "Round 1" in content
+    assert "80%" in content
+
+
+def test_write_strategy_update_appends(writer):
+    from wargames.models import Strategy
+    s1 = Strategy(team="red", phase=1, strategy_type="attack", content="First tactic",
+                  win_rate=0.5, usage_count=1, created_round=1)
+    s2 = Strategy(team="blue", phase=1, strategy_type="defense", content="Second tactic",
+                  win_rate=0.9, usage_count=5, created_round=2)
+    writer.write_strategy_update(1, "prompt-injection", [s1])
+    writer.write_strategy_update(2, "prompt-injection", [s2])
+    content = (writer.base_path / "strategies" / "phase-prompt-injection.md").read_text()
+    assert "Round 1" in content
+    assert "Round 2" in content
+    assert "First tactic" in content
+    assert "Second tactic" in content

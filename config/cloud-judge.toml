@@ -1,0 +1,44 @@
+# Local teams + cloud judge via antigravity bridge
+# Red/Blue use Ollama, Judge uses Claude via antigravity bridge (port 4003)
+
+[game]
+name = "season-cloud-judge"
+rounds = 10
+turn_limit = 8
+score_threshold = 10
+phase_advance_score = 7.5
+
+[draft]
+picks_per_team = 5
+style = "snake"
+
+[teams.red]
+name = "Red Team"
+model = "http://localhost:11434/v1"
+model_name = "qwen3:8b"
+temperature = 0.8
+
+[teams.blue]
+name = "Blue Team"
+model = "http://localhost:11434/v1"
+model_name = "qwen3:8b"
+temperature = 0.4
+
+[teams.judge]
+name = "Judge"
+model = "http://localhost:4003/v1"
+model_name = "claude-sonnet-4-5"
+temperature = 0.2
+timeout = 180.0
+
+[crawler]
+enabled = true
+sources = ["nvd", "exploitdb"]
+refresh_interval = "24h"
+
+[output.vault]
+enabled = true
+path = "~/OpenClaw-Vault/WarGames"
+
+[output.database]
+path = "~/.local/share/wargames/state.db"

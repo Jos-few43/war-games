@@ -1,8 +1,12 @@
+import asyncio
 import httpx
+
 
 class NVDCrawler:
     """Crawl NIST NVD API for CVE data."""
     BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+    MAX_RETRIES = 3
+    RETRY_BACKOFF = 2.0
 
     def __init__(self, http_client: httpx.AsyncClient | None = None):
         self._http = http_client or httpx.AsyncClient(timeout=30.0)
@@ -12,10 +16,22 @@ class NVDCrawler:
         if keyword:
             params["keywordSearch"] = keyword
 
-        response = await self._http.get(self.BASE_URL, params=params)
-        response.raise_for_status()
-        data = response.json()
+        last_exc = None
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                response = await self._http.get(self.BASE_URL, params=params)
+                response.raise_for_status()
+                data = response.json()
+                return self._parse(data)
+            except (httpx.TimeoutException, httpx.ConnectError) as exc:
+                last_exc = exc
+                if attempt < self.MAX_RETRIES - 1:
+                    await asyncio.sleep(self.RETRY_BACKOFF * (attempt + 1))
+            except httpx.HTTPStatusError:
+                return []
+        return []
 
+    def _parse(self, data: dict) -> list[dict]:
         results = []
         for vuln in data.get("vulnerabilities", []):
             cve = vuln.get("cve", {})

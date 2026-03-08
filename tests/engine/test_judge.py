@@ -2,7 +2,7 @@ import pytest
 import json
 from unittest.mock import AsyncMock
 from wargames.engine.judge import Judge
-from wargames.models import Severity, AttackResult
+from wargames.models import Severity, AttackResult, BugReport, Patch, Domain
 
 
 @pytest.mark.asyncio
@@ -68,16 +68,77 @@ async def test_judge_detects_auto_win():
 
 
 @pytest.mark.asyncio
-async def test_judge_evaluates_defense():
+async def test_judge_evaluates_defense_with_effectiveness():
+    """Defense evaluation returns (blocked, effectiveness, reasoning) tuple."""
     mock_llm = AsyncMock()
     mock_llm.chat.return_value = json.dumps({
         "blocked": True,
+        "effectiveness": 0.85,
         "reasoning": "WAF rule correctly identified and blocked SQLi pattern",
     })
     judge = Judge(mock_llm)
-    blocked, reasoning = await judge.evaluate_defense(
+    blocked, effectiveness, reasoning = await judge.evaluate_defense(
         attack_description="SQL injection on /api/users",
         defense_description="Deployed WAF rule blocking SQL metacharacters",
         available_tools=["waf_rules", "input_sanitizer"],
     )
     assert blocked is True
+    assert effectiveness == 0.85
+    assert "WAF" in reasoning
+
+
+@pytest.mark.asyncio
+async def test_judge_partial_defense():
+    """Effectiveness between 0.3 and 0.7 — partial mitigation, blocked=False."""
+    mock_llm = AsyncMock()
+    mock_llm.chat.return_value = json.dumps({
+        "blocked": False,
+        "effectiveness": 0.5,
+        "reasoning": "Defense slowed the attack but didn't fully prevent it",
+    })
+    judge = Judge(mock_llm)
+    blocked, effectiveness, reasoning = await judge.evaluate_defense(
+        attack_description="Privilege escalation via misconfigured sudo",
+        defense_description="Tightened some file permissions",
+        available_tools=["hardening_scripts"],
+    )
+    assert blocked is False  # effectiveness < 0.7
+    assert effectiveness == 0.5
+
+
+@pytest.mark.asyncio
+async def test_judge_effectiveness_clamped():
+    """Effectiveness values outside 0.0-1.0 are clamped."""
+    mock_llm = AsyncMock()
+    mock_llm.chat.return_value = json.dumps({
+        "blocked": True,
+        "effectiveness": 1.5,  # Out of range
+        "reasoning": "Excellent defense",
+    })
+    judge = Judge(mock_llm)
+    blocked, effectiveness, reasoning = await judge.evaluate_defense(
+        attack_description="XSS attack",
+        defense_description="CSP headers deployed",
+        available_tools=["csp_toolkit"],
+    )
+    assert effectiveness == 1.0  # Clamped to max
+
+
+@pytest.mark.asyncio
+async def test_judge_evaluates_patch():
+    mock_llm = AsyncMock()
+    mock_llm.chat.return_value = json.dumps({
+        "addressed": True,
+        "completeness": 0.85,
+        "reasoning": "Patch addresses the root cause",
+    })
+    judge = Judge(mock_llm)
+    bug = BugReport(round_number=1, title="SQLi", severity=Severity.HIGH,
+                    domain=Domain.CODE_VULN, target="/api",
+                    steps_to_reproduce="payload", proof_of_concept="",
+                    impact="DB access")
+    patch = Patch(round_number=1, title="Fix", fixes="parameterized queries",
+                  strategy="input validation", changes="login.py", verification="sqlmap")
+    result = await judge.evaluate_patch(bug, patch)
+    assert result["addressed"] is True
+    assert result["completeness"] == 0.85

@@ -1,6 +1,7 @@
 from __future__ import annotations
+import os
 from enum import Enum
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class DraftStyle(str, Enum):
@@ -33,7 +34,9 @@ class Phase(int, Enum):
 class MatchOutcome(str, Enum):
     RED_WIN = "red_win"
     BLUE_WIN = "blue_win"
-    RED_AUTO_WIN = "red_auto_win"
+    BLUE_DECISIVE_WIN = "blue_decisive_win"
+    RED_AUTO_WIN = "red_auto_win"  # Legacy — kept for historical DB rows
+    RED_CRITICAL_WIN = "red_critical_win"
     TIMEOUT = "timeout"
 
 
@@ -57,6 +60,14 @@ class TeamSettings(BaseModel):
     model: str
     model_name: str
     temperature: float = Field(ge=0.0, le=2.0)
+    timeout: float = Field(default=120.0, description="HTTP timeout per LLM call in seconds")
+    api_key: str = Field(default="", description="API key or env var ref like $LITELLM_MASTER_KEY")
+
+    @model_validator(mode="after")
+    def resolve_env_vars(self):
+        if self.api_key.startswith("$"):
+            self.api_key = os.environ.get(self.api_key[1:], "")
+        return self
 
 
 class TeamsSettings(BaseModel):
@@ -115,21 +126,9 @@ class DefenseResult(BaseModel):
     turn: int
     description: str
     blocked: bool = False
+    effectiveness: float = 0.0
     points_deducted: int = 0
-
-
-class RoundResult(BaseModel):
-    round_number: int
-    phase: Phase
-    outcome: MatchOutcome
-    red_score: int
-    blue_threshold: int
-    red_draft: list[DraftPick]
-    blue_draft: list[DraftPick]
-    attacks: list[AttackResult]
-    defenses: list[DefenseResult]
-    red_debrief: str = ""
-    blue_debrief: str = ""
+    points_earned: int = 0
 
 
 class BugReport(BaseModel):
@@ -150,3 +149,36 @@ class Patch(BaseModel):
     strategy: str
     changes: str
     verification: str
+
+
+class PatchScore(BaseModel):
+    addressed: bool = False
+    completeness: float = 0.0
+    reasoning: str = ""
+
+
+class RoundResult(BaseModel):
+    round_number: int
+    phase: Phase
+    outcome: MatchOutcome
+    red_score: int
+    blue_score: int = 0
+    blue_threshold: int
+    red_draft: list[DraftPick]
+    blue_draft: list[DraftPick]
+    attacks: list[AttackResult]
+    defenses: list[DefenseResult]
+    red_debrief: str = ""
+    blue_debrief: str = ""
+    bug_reports: list[BugReport] = []
+    patches: list[Patch] = []
+
+
+class Strategy(BaseModel):
+    team: str
+    phase: int
+    strategy_type: str  # "attack", "defense", "draft"
+    content: str
+    win_rate: float = 0.0
+    usage_count: int = 0
+    created_round: int = 0

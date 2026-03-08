@@ -1,0 +1,50 @@
+# All teams use cloud models via OpenRouter auto-routing
+# Routes to best available model (Gemini, Claude, etc.)
+# Approximate cost: ~$0.05 per 3-round game
+
+[game]
+name = "season-cloud-free"
+rounds = 3
+turn_limit = 4
+score_threshold = 10
+phase_advance_score = 7.5
+
+[draft]
+picks_per_team = 3
+style = "snake"
+
+[teams.red]
+name = "Red Team"
+model = "https://openrouter.ai/api/v1"
+model_name = "openrouter/auto"
+temperature = 0.8
+timeout = 120.0
+api_key = "$OPENROUTER_API_KEY"
+
+[teams.blue]
+name = "Blue Team"
+model = "https://openrouter.ai/api/v1"
+model_name = "openrouter/auto"
+temperature = 0.4
+timeout = 120.0
+api_key = "$OPENROUTER_API_KEY"
+
+[teams.judge]
+name = "Judge"
+model = "https://openrouter.ai/api/v1"
+model_name = "openrouter/auto"
+temperature = 0.2
+timeout = 120.0
+api_key = "$OPENROUTER_API_KEY"
+
+[crawler]
+enabled = false
+sources = []
+refresh_interval = "24h"
+
+[output.vault]
+enabled = true
+path = "~/OpenClaw-Vault/WarGames"
+
+[output.database]
+path = "~/.local/share/wargames/state.db"

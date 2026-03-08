@@ -2,6 +2,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Static, RichLog
 from textual.containers import Horizontal, Vertical
 import aiosqlite
+from wargames.tui.bridge import EventBridge
 
 
 class TeamPanel(Static):
@@ -91,9 +92,11 @@ class WarGamesTUI(App):
         ("q", "quit", "Quit"),
     ]
 
-    def __init__(self, db_path: str, **kwargs):
+    def __init__(self, db_path: str, bridge: EventBridge | None = None, **kwargs):
         super().__init__(**kwargs)
         self.db_path = db_path
+        self._bridge = bridge
+        self._paused = False
         self.title = "War Games"
 
     def compose(self) -> ComposeResult:
@@ -109,6 +112,35 @@ class WarGamesTUI(App):
 
     def on_mount(self):
         self.set_interval(2.0, self.refresh_data)
+        self.set_interval(0.5, self.consume_events)
+
+    def consume_events(self):
+        """Drain bridge and write events to live feed."""
+        if not self._bridge:
+            return
+        for event_type, data in self._bridge.drain():
+            feed = self.query_one("#feed", LiveFeed)
+            if event_type == "draft_complete":
+                red_tools = ", ".join(data.get("red", []))
+                blue_tools = ", ".join(data.get("blue", []))
+                feed.write(f"[bold]DRAFT[/] Red: {red_tools}")
+                feed.write(f"[bold]DRAFT[/] Blue: {blue_tools}")
+            elif event_type == "attack":
+                turn = data.get("turn", "?")
+                success = data.get("success", False)
+                pts = data.get("points", 0)
+                color = "green" if success else "red"
+                desc = str(data.get("description", ""))[:80]
+                feed.write(f"[{color}]T{turn} ATK[/] {'HIT' if success else 'MISS'} (+{pts}) {desc}")
+            elif event_type == "defense":
+                turn = data.get("turn", "?")
+                blocked = data.get("blocked", False)
+                color = "blue" if blocked else "yellow"
+                feed.write(f"[{color}]T{turn} DEF[/] {'BLOCKED' if blocked else 'MISSED'}")
+            elif event_type == "round_complete":
+                outcome = data.get("outcome", "?")
+                score = data.get("red_score", "?")
+                feed.write(f"[bold]━━━ ROUND COMPLETE: {outcome} (score: {score}) ━━━[/]")
 
     async def refresh_data(self):
         """Poll SQLite for latest state and update widgets."""
@@ -174,4 +206,11 @@ class WarGamesTUI(App):
 
     def action_toggle_pause(self):
         feed = self.query_one("#feed", LiveFeed)
-        feed.write("[Pause toggle - not yet implemented]")
+        if self._paused:
+            self._paused = False
+            feed.write("[bold green]RESUMED[/]")
+            self.sub_title = ""
+        else:
+            self._paused = True
+            feed.write("[bold yellow]PAUSED[/]")
+            self.sub_title = "PAUSED"

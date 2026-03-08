@@ -30,6 +30,23 @@ class DraftPool:
         raise ValueError(f"'{name}' not found in pool")
 
     @classmethod
+    async def from_cves(cls, db, include_defaults: bool = True) -> "DraftPool":
+        """Build a draft pool that includes crawled CVEs as draftable resources."""
+        cve_rows = await db.get_cves()
+        cve_resources = [
+            Resource(
+                name=row["cve_id"],
+                category="cve",
+                description=row["description"][:200],
+            )
+            for row in cve_rows
+        ]
+        if include_defaults:
+            base = cls.default()
+            return cls(base.resources + cve_resources)
+        return cls(cve_resources)
+
+    @classmethod
     def default(cls) -> "DraftPool":
         resources = [
             # Offensive
