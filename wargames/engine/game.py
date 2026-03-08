@@ -104,6 +104,8 @@ class GameEngine:
                     blue_lessons=blue_lessons,
                     red_strategies=red_strat_texts,
                     blue_strategies=blue_strat_texts,
+                    red_settings=self.config.teams.red,
+                    blue_settings=self.config.teams.blue,
                 )
             except Exception as exc:
                 logger.error("Round %d failed: %s — skipping to next round", round_num, exc)

@@ -65,6 +65,8 @@ class TeamSettings(BaseModel):
     fallback_model: str = Field(default="", description="Fallback base URL")
     fallback_model_name: str = Field(default="", description="Fallback model name")
     fallback_api_key: str = Field(default="", description="Fallback API key or env var ref")
+    loadout: str = Field(default="", description="Named loadout preset")
+    loadout_custom: list[str] = Field(default_factory=list, description="Custom resource list")
 
     @model_validator(mode="after")
     def resolve_env_vars(self):

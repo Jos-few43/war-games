@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from wargames.models import DraftPick
+from wargames.engine.loadouts import resolve_loadout
 
 
 @dataclass
@@ -98,7 +99,32 @@ class DraftEngine:
         pool: DraftPool,
         red_llm,
         blue_llm,
+        red_settings=None,
+        blue_settings=None,
     ) -> tuple[list[DraftPick], list[DraftPick]]:
+        # Check for loadouts early — skip LLM draft if configured
+        red_loadout_picks: list[DraftPick] = []
+        blue_loadout_picks: list[DraftPick] = []
+
+        if red_settings is not None:
+            red_loadout_picks = resolve_loadout(red_settings, team_name="red")
+        if blue_settings is not None:
+            blue_loadout_picks = resolve_loadout(blue_settings, team_name="blue")
+
+        # Both teams have loadouts — skip LLM entirely
+        if red_loadout_picks and blue_loadout_picks:
+            return red_loadout_picks, blue_loadout_picks
+
+        # One team has loadout — draft normally for the other
+        if red_loadout_picks:
+            blue_picks = await self._draft_for_team("blue", pool, blue_llm)
+            return red_loadout_picks, blue_picks
+
+        if blue_loadout_picks:
+            red_picks = await self._draft_for_team("red", pool, red_llm)
+            return red_picks, blue_loadout_picks
+
+        # Neither team has loadout — normal snake draft
         red_picks: list[DraftPick] = []
         blue_picks: list[DraftPick] = []
 
@@ -148,3 +174,35 @@ class DraftEngine:
             round_num += 1
 
         return red_picks, blue_picks
+
+    async def _draft_for_team(self, team: str, pool: DraftPool, llm) -> list[DraftPick]:
+        """Run an LLM draft for a single team (used when the other team has a loadout)."""
+        picks: list[DraftPick] = []
+        for round_num in range(1, self.picks_per_team + 1):
+            available = pool.available()
+            available_names = [r.name for r in available]
+
+            prompt = (
+                f"You are the {team} team. Choose one resource to draft.\n"
+                f"Available resources: {', '.join(available_names)}\n"
+                "Reply with only the resource name, nothing else."
+            )
+
+            chosen = await llm.chat([{"role": "user", "content": prompt}])
+            chosen = chosen.strip()
+
+            if chosen not in available_names:
+                chosen = await llm.chat([{"role": "user", "content": prompt}])
+                chosen = chosen.strip()
+                if chosen not in available_names:
+                    chosen = available_names[0]
+
+            resource = pool.pick(chosen)
+            picks.append(DraftPick(
+                round=round_num,
+                team=team,
+                resource_name=resource.name,
+                resource_category=resource.category,
+            ))
+
+        return picks

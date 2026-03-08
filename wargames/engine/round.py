@@ -36,7 +36,8 @@ class RoundEngine:
 
     async def play(self, round_number: int, phase: Phase, target: str = None,
                    red_lessons: list[str] = None, blue_lessons: list[str] = None,
-                   red_strategies: list[str] = None, blue_strategies: list[str] = None) -> RoundResult:
+                   red_strategies: list[str] = None, blue_strategies: list[str] = None,
+                   red_settings=None, blue_settings=None) -> RoundResult:
         """Execute a full round."""
         red_lessons = red_lessons or []
         blue_lessons = blue_lessons or []
@@ -50,7 +51,8 @@ class RoundEngine:
         else:
             pool = DraftPool.default()
         red_draft_picks, blue_draft_picks = await self.draft_engine.run(
-            pool, self.red.llm, self.blue.llm
+            pool, self.red.llm, self.blue.llm,
+            red_settings=red_settings, blue_settings=blue_settings,
         )
         red_tools = [p.resource_name for p in red_draft_picks]
         blue_tools = [p.resource_name for p in blue_draft_picks]
