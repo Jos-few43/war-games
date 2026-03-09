@@ -1,5 +1,7 @@
 """Tests for the Swiss-system pairing engine."""
 
+import pytest
+
 from wargames.engine.swiss import StandingsEntry, swiss_pair
 
 
@@ -81,3 +83,64 @@ def test_swiss_pair_odd_number_gives_bye():
     paired_names = {pairs[0][0].name, pairs[0][1].name}
     # A (highest) should pair with B (next); C gets the bye.
     assert paired_names == {"A", "B"}
+
+
+@pytest.mark.asyncio
+async def test_tournament_runner_completes(tmp_path):
+    """Tournament runner should complete all Swiss rounds and update standings."""
+    from unittest.mock import AsyncMock, patch
+
+    from wargames.engine.swiss import TournamentRunner
+    from wargames.models import (
+        MatchOutcome,
+        ModelEntry,
+        Phase,
+        RoundResult,
+        TournamentConfig,
+    )
+    from wargames.output.db import Database
+
+    config = TournamentConfig(
+        name="test-tourney",
+        rounds=2,
+        games_per_match=2,
+        game_rounds=1,
+        turn_limit=4,
+        score_threshold=10,
+        models=[
+            ModelEntry(name="model-a", endpoint="http://localhost/v1", model_name="a"),
+            ModelEntry(name="model-b", endpoint="http://localhost/v1", model_name="b"),
+            ModelEntry(name="model-c", endpoint="http://localhost/v1", model_name="c"),
+            ModelEntry(name="model-d", endpoint="http://localhost/v1", model_name="d"),
+        ],
+    )
+
+    db = Database(tmp_path / "test.db")
+    await db.init()
+
+    mock_result = RoundResult(
+        round_number=1,
+        phase=Phase.PROMPT_INJECTION,
+        outcome=MatchOutcome.RED_WIN,
+        red_score=8,
+        blue_score=3,
+        blue_threshold=10,
+        red_draft=[],
+        blue_draft=[],
+        attacks=[],
+        defenses=[],
+    )
+
+    with patch("wargames.engine.sandbox.SandboxRunner") as MockSandbox:
+        mock_runner = AsyncMock()
+        mock_runner.run.return_value = mock_result
+        MockSandbox.return_value = mock_runner
+
+        runner = TournamentRunner(config, db)
+        final_standings = await runner.run()
+
+    assert len(final_standings) == 4
+    matches = await db.get_tournament_matches("test-tourney")
+    # 2 Swiss rounds x 2 pairs x 2 games_per_match = 8 matches
+    assert len(matches) == 8
+    await db.close()
