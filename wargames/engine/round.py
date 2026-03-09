@@ -118,6 +118,7 @@ class RoundEngine:
                 )
                 blocked, effectiveness, reasoning = await self.judge.evaluate_defense(
                     attack_desc, defense_desc, blue_tools,
+                    attack_severity=attack_severity,
                 )
 
                 if effectiveness >= 0.5:
@@ -151,6 +152,7 @@ class RoundEngine:
             )
             blocked, effectiveness, reasoning = await self.judge.evaluate_defense(
                 attack_desc, defense_desc, blue_tools,
+                attack_severity=attack_severity,
             )
 
             # Graded scoring based on effectiveness (no red erosion)

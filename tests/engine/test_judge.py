@@ -1,7 +1,7 @@
 import pytest
 import json
 from unittest.mock import AsyncMock
-from wargames.engine.judge import Judge, ATTACK_SYSTEM_PROMPT
+from wargames.engine.judge import Judge, ATTACK_SYSTEM_PROMPT, DEFENSE_SYSTEM_PROMPT
 from wargames.models import Severity, AttackResult, BugReport, Patch, Domain
 
 
@@ -225,3 +225,33 @@ async def test_judge_attack_fallback_summary_on_missing():
     assert result.success is True
     # Summary should be the fallback: first 100 chars of attack_description
     assert summary == attack_desc  # Under 100 chars, no truncation
+
+
+@pytest.mark.asyncio
+async def test_judge_defense_prompt_includes_severity_guidance():
+    """When attack_severity is passed, the user message sent to LLM mentions severity and calibration."""
+    mock_llm = AsyncMock()
+    mock_llm.chat.return_value = json.dumps({
+        "blocked": False,
+        "effectiveness": 0.4,
+        "reasoning": "Generic defense against critical attack",
+    })
+    judge = Judge(mock_llm)
+    await judge.evaluate_defense(
+        attack_description="RCE via deserialization",
+        defense_description="Deploy generic WAF rules",
+        available_tools=["waf_rules"],
+        attack_severity="critical",
+    )
+    # Verify the user message includes severity context
+    call_args = mock_llm.chat.call_args
+    user_message = call_args[0][0][0]["content"]
+    assert "critical" in user_message.lower()
+    assert "severity" in user_message.lower()
+    # Verify the system prompt includes calibration tiers
+    system_prompt = call_args.kwargs.get("system") or call_args[1].get("system", "")
+    assert "0.0-0.3" in system_prompt
+    assert "0.3-0.5" in system_prompt
+    assert "0.5-0.7" in system_prompt
+    assert "0.7-1.0" in system_prompt
+    assert "defense-in-depth" in system_prompt

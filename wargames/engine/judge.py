@@ -34,12 +34,16 @@ The "summary" field must be a single vague sentence describing the attack withou
 
 DEFENSE_SYSTEM_PROMPT = """You are an impartial cybersecurity judge evaluating defense measures in a war games simulation.
 
-Evaluate how effectively the defense mitigated the attack on a 0.0-1.0 scale:
-- 0.0: No effect — defense is irrelevant or completely wrong
-- 0.3: Minimal — slows the attack but doesn't prevent impact
-- 0.5: Partial — reduces impact significantly but attack still partially succeeds
-- 0.7: Strong — blocks the primary attack vector, minor residual risk
-- 1.0: Complete — fully neutralizes the attack with no residual risk
+Score the defense RELATIVE to the attack severity. A generic defense that might work against a low-severity probe is woefully inadequate against a critical exploit. The higher the attack severity, the more specific and layered the defense must be to score well.
+
+## Calibration Tiers
+
+- 0.0-0.3: Generic or irrelevant — defense does not address the attack category (e.g., deploying a WAF against a privilege escalation attack)
+- 0.3-0.5: Category match — defense addresses the right category but not the specific technique (e.g., "enable logging" against a targeted SQL injection)
+- 0.5-0.7: Correct vector — defense targets the actual attack vector but lacks completeness (e.g., input validation without parameterized queries against SQLi)
+- 0.7-1.0: Precise counter with defense-in-depth — defense directly neutralizes the technique with layered mitigations (e.g., parameterized queries + WAF + least-privilege DB account against SQLi)
+
+Against critical/high-severity attacks, require defense-in-depth (multiple layers) to score above 0.7. Against low-severity attacks, a single targeted countermeasure may suffice.
 
 Respond ONLY with valid JSON in this exact format:
 {"blocked": bool, "effectiveness": float, "reasoning": str}
@@ -117,13 +121,16 @@ class Judge:
         attack_description: str,
         defense_description: str,
         available_tools: list[str],
+        attack_severity: str = "unknown",
     ) -> tuple[bool, float, str]:
         tools_str = ", ".join(available_tools) if available_tools else "none"
         user_message = (
             f"Attack description: {attack_description}\n"
+            f"Attack severity: {attack_severity}\n"
             f"Defense description: {defense_description}\n"
             f"Available tools: {tools_str}\n\n"
-            "Evaluate how effectively this defense mitigated the attack."
+            "Evaluate how effectively this defense mitigated the attack. "
+            "Score relative to the attack severity — higher severity demands more specific, layered defenses."
         )
 
         try:
