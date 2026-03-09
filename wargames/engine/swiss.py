@@ -260,16 +260,18 @@ class TournamentRunner:
                 )
 
             won_red = outcome in ("red_win", "red_auto_win", "red_critical_win")
+            won_blue = outcome in ("blue_win", "blue_decisive_win")
             if won_red:
                 if red_name == p1.name:
                     p1_game_wins += 1
                 else:
                     p2_game_wins += 1
-            else:
+            elif won_blue:
                 if blue_name == p1.name:
                     p1_game_wins += 1
                 else:
                     p2_game_wins += 1
+            # else: timeout — no game win awarded
 
         if p1_game_wins > p2_game_wins:
             return "p1"
@@ -327,4 +329,4 @@ class TournamentRunner:
                     p2.name, p2.rating,
                 )
 
-        return sorted(self.standings.values(), key=lambda s: (-s.rating,))
+        return sorted(self.standings.values(), key=lambda s: (-s.points, -s.rating))
