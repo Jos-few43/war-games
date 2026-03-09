@@ -89,7 +89,7 @@ class RoundEngine:
             if turn % 2 == 0 and last_defense:
                 attack_context = f"{target}\n\nNote: Blue team has already deployed these defenses: {last_defense}"
 
-            attack_result = await self.judge.evaluate_attack(attack_desc, attack_context, red_tools)
+            attack_result, fog_summary = await self.judge.evaluate_attack(attack_desc, attack_context, red_tools)
             attack_result.turn = turn
             attack_result.description = attack_desc
 
@@ -113,11 +113,12 @@ class RoundEngine:
             # Critical attack — Blue gets a contested defense chance
             if attack_result.auto_win:
                 defense_desc = await self.blue.defend(
-                    attack_desc, target, blue_tools, blue_lessons, blue_strategies,
+                    fog_summary, target, blue_tools, blue_lessons, blue_strategies,
                     attack_severity=attack_severity,
                 )
                 blocked, effectiveness, reasoning = await self.judge.evaluate_defense(
                     attack_desc, defense_desc, blue_tools,
+                    attack_severity=attack_severity,
                 )
 
                 if effectiveness >= 0.5:
@@ -144,30 +145,27 @@ class RoundEngine:
                     break
                 continue
 
-            # Blue defends (normal turn)
+            # Blue defends (normal turn) — fog-of-war: blue sees only vague summary
             defense_desc = await self.blue.defend(
-                attack_desc, target, blue_tools, blue_lessons, blue_strategies,
+                fog_summary, target, blue_tools, blue_lessons, blue_strategies,
                 attack_severity=attack_severity,
             )
             blocked, effectiveness, reasoning = await self.judge.evaluate_defense(
                 attack_desc, defense_desc, blue_tools,
+                attack_severity=attack_severity,
             )
 
-            # Graded scoring based on effectiveness
+            # Graded scoring based on effectiveness (no red erosion)
             points_deducted = 0
             points_earned = 0
             if effectiveness >= 0.7:
                 # Full block
-                points_earned = 3
-                points_deducted = 2
+                points_earned = 2
                 blue_score += points_earned
-                red_score = max(0, red_score - points_deducted)
             elif effectiveness >= 0.3:
                 # Partial mitigation
                 points_earned = 1
-                points_deducted = 1
                 blue_score += points_earned
-                red_score = max(0, red_score - points_deducted)
 
             defenses.append(DefenseResult(
                 turn=turn, description=defense_desc,
@@ -182,17 +180,12 @@ class RoundEngine:
             # Check if red crossed threshold
             if red_score >= self.score_threshold:
                 break
-            # Check if blue crossed threshold (decisive win)
-            if blue_score >= self.score_threshold:
-                break
 
         # 3. DETERMINE OUTCOME
         if critical_win:
             outcome = MatchOutcome.RED_CRITICAL_WIN
         elif red_score >= self.score_threshold:
             outcome = MatchOutcome.RED_WIN
-        elif blue_score >= self.score_threshold:
-            outcome = MatchOutcome.BLUE_DECISIVE_WIN
         else:
             outcome = MatchOutcome.BLUE_WIN
 

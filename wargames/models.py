@@ -210,3 +210,33 @@ class Strategy(BaseModel):
     win_rate: float = 0.0
     usage_count: int = 0
     created_round: int = 0
+
+
+# --- Tournament models ---
+
+
+class ModelEntry(BaseModel):
+    name: str
+    endpoint: str
+    model_name: str
+    api_key: str = ""
+    temperature: float = 0.7
+    timeout: float = 60.0
+
+    @field_validator("api_key", mode="before")
+    @classmethod
+    def resolve_api_key_env(cls, v: str) -> str:
+        if isinstance(v, str) and v.startswith("$"):
+            return os.environ.get(v[1:], "")
+        return v
+
+
+class TournamentConfig(BaseModel):
+    name: str
+    rounds: int = Field(gt=0)
+    games_per_match: int = Field(default=2, gt=0)
+    game_rounds: int = Field(default=1, gt=0)
+    turn_limit: int = Field(default=4, gt=0)
+    score_threshold: int = Field(default=10, gt=0)
+    judge_model: str = Field(default="", description="Override judge model. Empty = higher-rated.")
+    models: list[ModelEntry] = []

@@ -71,7 +71,7 @@ def test_phase_does_not_advance_below_threshold():
 def test_phase_does_not_advance_with_few_rounds():
     config = load_config(Path("config/default.toml"))
     engine = GameEngine(config)
-    engine._round_scores = [10.0] * 5  # Only 5 rounds, need 10
+    engine._round_scores = [10.0] * 2  # Only 2 rounds, need 3
     new_phase = engine._check_phase_advance(Phase.PROMPT_INJECTION)
     assert new_phase == Phase.PROMPT_INJECTION
 
@@ -165,3 +165,38 @@ async def test_game_engine_survives_round_failure(config):
         # Only 2 results: round 1 failed, rounds 2 and 3 succeeded
         assert len(results) == 2
         assert mock_play.call_count == 3
+
+
+# --- Phase advance tests ---
+
+@pytest.mark.asyncio
+async def test_phase_advances_after_3_rounds(config):
+    """Phase advances when 3 recent rounds average >= threshold."""
+    config.game.phase_advance_score = 5.0
+    engine = GameEngine(config)
+    engine._round_scores = [6.0, 5.0, 7.0]
+
+    result = engine._check_phase_advance(Phase.PROMPT_INJECTION)
+    assert result == Phase.CODE_VULNS
+
+
+@pytest.mark.asyncio
+async def test_phase_does_not_advance_below_threshold(config):
+    """Phase stays when average is below threshold."""
+    config.game.phase_advance_score = 5.0
+    engine = GameEngine(config)
+    engine._round_scores = [2.0, 1.0, 3.0]
+
+    result = engine._check_phase_advance(Phase.PROMPT_INJECTION)
+    assert result == Phase.PROMPT_INJECTION
+
+
+@pytest.mark.asyncio
+async def test_phase_does_not_advance_with_fewer_than_3_rounds(config):
+    """Phase stays when fewer than 3 rounds of data exist."""
+    config.game.phase_advance_score = 5.0
+    engine = GameEngine(config)
+    engine._round_scores = [8.0, 8.0]
+
+    result = engine._check_phase_advance(Phase.PROMPT_INJECTION)
+    assert result == Phase.PROMPT_INJECTION

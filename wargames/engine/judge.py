@@ -13,20 +13,37 @@ Scoring rubric:
 - critical: 8 points — full system compromise or severe impact
 - auto_win: triggered for privilege escalation to root/admin or exploitation of a zero-day
 
+## Calibration Examples
+
+LOW (1 pt): "Attacker sends a crafted HTTP header to enumerate server software version." — Minor info leak, no direct exploitation.
+
+MEDIUM (3 pts): "Attacker exploits an IDOR vulnerability to read another user's profile data." — Unauthorized data access, limited scope.
+
+HIGH (5 pts): "Attacker chains an SSRF with a metadata endpoint to extract cloud IAM credentials." — Significant credential theft enabling lateral movement.
+
+CRITICAL (8 pts): "Attacker exploits a deserialization flaw to achieve remote code execution on the application server." — Full system compromise with arbitrary code execution.
+
+Use these examples to calibrate your severity ratings. Most attacks should NOT be rated low — differentiate carefully.
+
 Respond ONLY with valid JSON in this exact format:
-{"valid": bool, "severity": str|null, "points": int, "auto_win": bool, "reasoning": str}
+{"valid": bool, "severity": str|null, "points": int, "auto_win": bool, "reasoning": str, "summary": str}
 
 Where severity is one of: "low", "medium", "high", "critical", or null if the attack is invalid.
-Set auto_win to true only for full privilege escalation or confirmed zero-day exploits."""
+Set auto_win to true only for full privilege escalation or confirmed zero-day exploits.
+The "summary" field must be a single vague sentence describing the attack without specifics (for fog-of-war display to the opposing team)."""
 
 DEFENSE_SYSTEM_PROMPT = """You are an impartial cybersecurity judge evaluating defense measures in a war games simulation.
 
-Evaluate how effectively the defense mitigated the attack on a 0.0-1.0 scale:
-- 0.0: No effect — defense is irrelevant or completely wrong
-- 0.3: Minimal — slows the attack but doesn't prevent impact
-- 0.5: Partial — reduces impact significantly but attack still partially succeeds
-- 0.7: Strong — blocks the primary attack vector, minor residual risk
-- 1.0: Complete — fully neutralizes the attack with no residual risk
+Score the defense RELATIVE to the attack severity. A generic defense that might work against a low-severity probe is woefully inadequate against a critical exploit. The higher the attack severity, the more specific and layered the defense must be to score well.
+
+## Calibration Tiers
+
+- 0.0-0.3: Generic or irrelevant — defense does not address the attack category (e.g., deploying a WAF against a privilege escalation attack)
+- 0.3-0.5: Category match — defense addresses the right category but not the specific technique (e.g., "enable logging" against a targeted SQL injection)
+- 0.5-0.7: Correct vector — defense targets the actual attack vector but lacks completeness (e.g., input validation without parameterized queries against SQLi)
+- 0.7-1.0: Precise counter with defense-in-depth — defense directly neutralizes the technique with layered mitigations (e.g., parameterized queries + WAF + least-privilege DB account against SQLi)
+
+Against critical/high-severity attacks, require defense-in-depth (multiple layers) to score above 0.7. Against low-severity attacks, a single targeted countermeasure may suffice.
 
 Respond ONLY with valid JSON in this exact format:
 {"blocked": bool, "effectiveness": float, "reasoning": str}
@@ -50,7 +67,7 @@ class Judge:
         attack_description: str,
         target_description: str,
         available_tools: list[str],
-    ) -> AttackResult:
+    ) -> tuple[AttackResult, str]:
         tools_str = ", ".join(available_tools) if available_tools else "none"
         user_message = (
             f"Attack description: {attack_description}\n"
@@ -59,6 +76,8 @@ class Judge:
             "Evaluate whether this attack would succeed against this target. "
             "Consider the available tools and the realism of the attack."
         )
+
+        fallback_summary = attack_description[:100] + ("..." if len(attack_description) > 100 else "")
 
         try:
             response = await self.llm.chat(
@@ -71,22 +90,30 @@ class Judge:
             if data.get("severity"):
                 severity = Severity(data["severity"])
 
-            return AttackResult(
-                turn=0,
-                description=attack_description,
-                success=bool(data.get("valid", False)),
-                severity=severity,
-                points=int(data.get("points", 0)),
-                auto_win=bool(data.get("auto_win", False)),
+            summary = data.get("summary") or fallback_summary
+
+            return (
+                AttackResult(
+                    turn=0,
+                    description=attack_description,
+                    success=bool(data.get("valid", False)),
+                    severity=severity,
+                    points=int(data.get("points", 0)),
+                    auto_win=bool(data.get("auto_win", False)),
+                ),
+                summary,
             )
         except (json.JSONDecodeError, KeyError, ValueError):
-            return AttackResult(
-                turn=0,
-                description=attack_description,
-                success=False,
-                severity=None,
-                points=0,
-                auto_win=False,
+            return (
+                AttackResult(
+                    turn=0,
+                    description=attack_description,
+                    success=False,
+                    severity=None,
+                    points=0,
+                    auto_win=False,
+                ),
+                fallback_summary,
             )
 
     async def evaluate_defense(
@@ -94,13 +121,16 @@ class Judge:
         attack_description: str,
         defense_description: str,
         available_tools: list[str],
+        attack_severity: str = "unknown",
     ) -> tuple[bool, float, str]:
         tools_str = ", ".join(available_tools) if available_tools else "none"
         user_message = (
             f"Attack description: {attack_description}\n"
+            f"Attack severity: {attack_severity}\n"
             f"Defense description: {defense_description}\n"
             f"Available tools: {tools_str}\n\n"
-            "Evaluate how effectively this defense mitigated the attack."
+            "Evaluate how effectively this defense mitigated the attack. "
+            "Score relative to the attack severity — higher severity demands more specific, layered defenses."
         )
 
         try:
