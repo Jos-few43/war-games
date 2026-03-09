@@ -13,11 +13,24 @@ Scoring rubric:
 - critical: 8 points — full system compromise or severe impact
 - auto_win: triggered for privilege escalation to root/admin or exploitation of a zero-day
 
+## Calibration Examples
+
+LOW (1 pt): "Attacker sends a crafted HTTP header to enumerate server software version." — Minor info leak, no direct exploitation.
+
+MEDIUM (3 pts): "Attacker exploits an IDOR vulnerability to read another user's profile data." — Unauthorized data access, limited scope.
+
+HIGH (5 pts): "Attacker chains an SSRF with a metadata endpoint to extract cloud IAM credentials." — Significant credential theft enabling lateral movement.
+
+CRITICAL (8 pts): "Attacker exploits a deserialization flaw to achieve remote code execution on the application server." — Full system compromise with arbitrary code execution.
+
+Use these examples to calibrate your severity ratings. Most attacks should NOT be rated low — differentiate carefully.
+
 Respond ONLY with valid JSON in this exact format:
-{"valid": bool, "severity": str|null, "points": int, "auto_win": bool, "reasoning": str}
+{"valid": bool, "severity": str|null, "points": int, "auto_win": bool, "reasoning": str, "summary": str}
 
 Where severity is one of: "low", "medium", "high", "critical", or null if the attack is invalid.
-Set auto_win to true only for full privilege escalation or confirmed zero-day exploits."""
+Set auto_win to true only for full privilege escalation or confirmed zero-day exploits.
+The "summary" field must be a single vague sentence describing the attack without specifics (for fog-of-war display to the opposing team)."""
 
 DEFENSE_SYSTEM_PROMPT = """You are an impartial cybersecurity judge evaluating defense measures in a war games simulation.
 
@@ -50,7 +63,7 @@ class Judge:
         attack_description: str,
         target_description: str,
         available_tools: list[str],
-    ) -> AttackResult:
+    ) -> tuple[AttackResult, str]:
         tools_str = ", ".join(available_tools) if available_tools else "none"
         user_message = (
             f"Attack description: {attack_description}\n"
@@ -59,6 +72,8 @@ class Judge:
             "Evaluate whether this attack would succeed against this target. "
             "Consider the available tools and the realism of the attack."
         )
+
+        fallback_summary = attack_description[:100] + ("..." if len(attack_description) > 100 else "")
 
         try:
             response = await self.llm.chat(
@@ -71,22 +86,30 @@ class Judge:
             if data.get("severity"):
                 severity = Severity(data["severity"])
 
-            return AttackResult(
-                turn=0,
-                description=attack_description,
-                success=bool(data.get("valid", False)),
-                severity=severity,
-                points=int(data.get("points", 0)),
-                auto_win=bool(data.get("auto_win", False)),
+            summary = data.get("summary") or fallback_summary
+
+            return (
+                AttackResult(
+                    turn=0,
+                    description=attack_description,
+                    success=bool(data.get("valid", False)),
+                    severity=severity,
+                    points=int(data.get("points", 0)),
+                    auto_win=bool(data.get("auto_win", False)),
+                ),
+                summary,
             )
         except (json.JSONDecodeError, KeyError, ValueError):
-            return AttackResult(
-                turn=0,
-                description=attack_description,
-                success=False,
-                severity=None,
-                points=0,
-                auto_win=False,
+            return (
+                AttackResult(
+                    turn=0,
+                    description=attack_description,
+                    success=False,
+                    severity=None,
+                    points=0,
+                    auto_win=False,
+                ),
+                fallback_summary,
             )
 
     async def evaluate_defense(

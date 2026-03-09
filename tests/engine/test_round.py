@@ -41,9 +41,9 @@ async def test_round_runs_to_completion():
     _setup_bug_patch(mock_red, mock_blue)
 
     mock_red.attack.return_value = "SQLi on /api/users"
-    mock_judge.evaluate_attack.return_value = AttackResult(
+    mock_judge.evaluate_attack.return_value = (AttackResult(
         turn=0, description="", success=True, severity=Severity.HIGH, points=5, auto_win=False,
-    )
+    ), "A database attack was attempted.")
     # Defense fails — effectiveness 0.1
     mock_judge.evaluate_defense.return_value = (False, 0.1, "Defense failed")
     mock_blue.defend.return_value = "Added input validation"
@@ -73,9 +73,9 @@ async def test_round_critical_attack_contested_blue_fails():
     _setup_bug_patch(mock_red, mock_blue)
 
     mock_red.attack.return_value = "Kernel exploit for root"
-    mock_judge.evaluate_attack.return_value = AttackResult(
+    mock_judge.evaluate_attack.return_value = (AttackResult(
         turn=0, description="", success=True, severity=Severity.CRITICAL, points=8, auto_win=True,
-    )
+    ), "A critical system compromise was attempted.")
     mock_blue.defend.return_value = "Attempted containment"
     mock_judge.evaluate_defense.return_value = (False, 0.3, "Cannot block kernel exploit")
     mock_red.write_debrief.return_value = "Red debrief"
@@ -100,8 +100,8 @@ async def test_round_critical_attack_contested_blue_wins():
     # Turn 1: critical attack, Blue neutralizes it
     # Turn 2: normal attack, Blue blocks
     attack_results = [
-        AttackResult(turn=0, description="", success=True, severity=Severity.CRITICAL, points=8, auto_win=True),
-        AttackResult(turn=0, description="", success=True, severity=Severity.MEDIUM, points=3, auto_win=False),
+        (AttackResult(turn=0, description="", success=True, severity=Severity.CRITICAL, points=8, auto_win=True), "A critical attack was launched."),
+        (AttackResult(turn=0, description="", success=True, severity=Severity.MEDIUM, points=3, auto_win=False), "A moderate attack was attempted."),
     ]
     mock_judge.evaluate_attack.side_effect = attack_results
     mock_red.attack.return_value = "Attack"
@@ -131,9 +131,9 @@ async def test_blue_decisive_win():
 
     mock_red.attack.return_value = "Weak attack"
     # Attacks succeed but with low points
-    mock_judge.evaluate_attack.return_value = AttackResult(
+    mock_judge.evaluate_attack.return_value = (AttackResult(
         turn=0, description="", success=True, severity=Severity.LOW, points=1, auto_win=False,
-    )
+    ), "A minor attack was attempted.")
     _setup_bug_patch(mock_red, mock_blue)
     # Blue blocks every time with high effectiveness
     mock_judge.evaluate_defense.return_value = (True, 0.9, "Excellent defense")
@@ -159,9 +159,9 @@ async def test_partial_defense_scoring():
     _setup_bug_patch(mock_red, mock_blue)
 
     mock_red.attack.return_value = "Medium attack"
-    mock_judge.evaluate_attack.return_value = AttackResult(
+    mock_judge.evaluate_attack.return_value = (AttackResult(
         turn=0, description="", success=True, severity=Severity.MEDIUM, points=3, auto_win=False,
-    )
+    ), "A moderate attack was attempted.")
     # Partial defense — effectiveness 0.5
     mock_judge.evaluate_defense.return_value = (False, 0.5, "Partial mitigation")
     mock_blue.defend.return_value = "Partial defense"
@@ -189,9 +189,9 @@ async def test_even_turn_defense_context():
     _setup_bug_patch(mock_red, mock_blue)
 
     mock_red.attack.return_value = "Attack attempt"
-    mock_judge.evaluate_attack.return_value = AttackResult(
+    mock_judge.evaluate_attack.return_value = (AttackResult(
         turn=0, description="", success=True, severity=Severity.LOW, points=1, auto_win=False,
-    )
+    ), "A minor reconnaissance attempt was detected.")
     mock_judge.evaluate_defense.return_value = (True, 0.8, "Blocked")
     mock_blue.defend.return_value = "Deployed WAF and IDS monitoring"
     mock_red.write_debrief.return_value = "Red debrief"
@@ -220,9 +220,9 @@ async def test_blue_receives_attack_severity():
     _setup_bug_patch(mock_red, mock_blue)
 
     mock_red.attack.return_value = "Critical attack"
-    mock_judge.evaluate_attack.return_value = AttackResult(
+    mock_judge.evaluate_attack.return_value = (AttackResult(
         turn=0, description="", success=True, severity=Severity.CRITICAL, points=8, auto_win=False,
-    )
+    ), "A critical attack was attempted.")
     mock_judge.evaluate_defense.return_value = (True, 0.8, "Blocked")
     mock_blue.defend.return_value = "Defense"
     mock_red.write_debrief.return_value = "Red debrief"

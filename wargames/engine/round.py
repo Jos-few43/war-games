@@ -89,7 +89,7 @@ class RoundEngine:
             if turn % 2 == 0 and last_defense:
                 attack_context = f"{target}\n\nNote: Blue team has already deployed these defenses: {last_defense}"
 
-            attack_result = await self.judge.evaluate_attack(attack_desc, attack_context, red_tools)
+            attack_result, fog_summary = await self.judge.evaluate_attack(attack_desc, attack_context, red_tools)
             attack_result.turn = turn
             attack_result.description = attack_desc
 
