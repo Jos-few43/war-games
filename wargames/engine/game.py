@@ -202,10 +202,10 @@ class GameEngine:
 
     def _check_phase_advance(self, current_phase: Phase) -> Phase:
         """Check if average scores warrant advancing to next phase."""
-        if len(self._round_scores) < 10:
+        if len(self._round_scores) < 3:
             return current_phase
 
-        recent_avg = sum(self._round_scores[-10:]) / 10
+        recent_avg = sum(self._round_scores[-3:]) / 3
         if recent_avg >= self.config.game.phase_advance_score:
             phase_order = [Phase.PROMPT_INJECTION, Phase.CODE_VULNS, Phase.REAL_CVES, Phase.OPEN_ENDED]
             current_idx = phase_order.index(current_phase)

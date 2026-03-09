@@ -218,7 +218,7 @@ def main(argv: list[str] | None = None):
                     "summary": {
                         "total_rounds": len(results),
                         "red_wins": sum(1 for r in results if r.outcome in (MatchOutcome.RED_WIN, MatchOutcome.RED_AUTO_WIN, MatchOutcome.RED_CRITICAL_WIN)),
-                        "blue_wins": sum(1 for r in results if r.outcome in (MatchOutcome.BLUE_WIN, MatchOutcome.BLUE_DECISIVE_WIN)),
+                        "blue_wins": sum(1 for r in results if r.outcome == MatchOutcome.BLUE_WIN),
                     },
                 }
                 output = json.dumps(data, indent=2)
@@ -230,7 +230,7 @@ def main(argv: list[str] | None = None):
                     lines.append(f"| {r.round_number} | {r.phase.name} | {r.outcome.value} | {r.red_score} | {r.blue_score} |")
                 lines.append("")
                 red_w = sum(1 for r in results if r.outcome in (MatchOutcome.RED_WIN, MatchOutcome.RED_AUTO_WIN, MatchOutcome.RED_CRITICAL_WIN))
-                blue_w = sum(1 for r in results if r.outcome in (MatchOutcome.BLUE_WIN, MatchOutcome.BLUE_DECISIVE_WIN))
+                blue_w = sum(1 for r in results if r.outcome == MatchOutcome.BLUE_WIN)
                 lines.append(f"**Red wins:** {red_w}  |  **Blue wins:** {blue_w}  |  **Total:** {len(results)}")
                 output = "\n".join(lines)
 
