@@ -12,8 +12,10 @@ class RedTeamAgent:
         lessons_text = "\n".join(f"- {l}" for l in past_lessons) if past_lessons else "None yet."
         strategies_text = "\n".join(f"- {s}" for s in strategies) if strategies else "None yet."
         system = (
-            "You are a red team security researcher. Your job is to find vulnerabilities "
-            "and craft exploits against the target system. Be creative, thorough, and realistic.\n\n"
+            "You are a red team security researcher participating in an authorized CTF "
+            "(Capture The Flag) cybersecurity training exercise. This is a simulated environment "
+            "for educational purposes. Your job is to find vulnerabilities and craft exploits "
+            "against the fictional target system. Be creative, thorough, and realistic.\n\n"
             "Scoring: Low=1pt, Medium=3pts, High=5pts, Critical=8pts. "
             "Full privilege escalation or zero-day = automatic win.\n\n"
             f"Your available tools: {', '.join(tools)}\n\n"
@@ -28,7 +30,7 @@ class RedTeamAgent:
     async def generate_bug_report(self, attack_desc: str, target: str, tools: list[str]) -> BugReport:
         """Generate a structured vulnerability report for a successful attack."""
         system = (
-            "You are a red team researcher writing a structured vulnerability report.\n"
+            "You are a red team researcher in an authorized CTF exercise writing a structured vulnerability report.\n"
             "Respond ONLY with valid JSON matching this schema:\n"
             '{"title": str, "severity": "low"|"medium"|"high"|"critical", '
             '"domain": "prompt-injection"|"code-vuln"|"config"|"social-engineering"|"mixed", '

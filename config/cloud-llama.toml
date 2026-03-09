@@ -1,0 +1,54 @@
+# Cloud config using Llama 3.1 70B via OpenRouter
+# Red/Blue: meta-llama/llama-3.1-70b-instruct (good at security roleplay)
+# Judge: same model (consistent scoring)
+# Cost: ~$0.02 per 3-round game
+
+[game]
+name = "season-cloud-llama"
+rounds = 3
+turn_limit = 4
+score_threshold = 10
+phase_advance_score = 7.5
+
+[draft]
+picks_per_team = 3
+style = "snake"
+
+[teams.red]
+name = "Red Team"
+model = "https://openrouter.ai/api/v1"
+model_name = "meta-llama/llama-3.1-70b-instruct"
+temperature = 0.8
+timeout = 60.0
+api_key = "$OPENROUTER_API_KEY"
+
+[teams.blue]
+name = "Blue Team"
+model = "https://openrouter.ai/api/v1"
+model_name = "meta-llama/llama-3.1-70b-instruct"
+temperature = 0.4
+timeout = 60.0
+api_key = "$OPENROUTER_API_KEY"
+
+[teams.judge]
+name = "Judge"
+model = "https://openrouter.ai/api/v1"
+model_name = "meta-llama/llama-3.1-70b-instruct"
+temperature = 0.2
+timeout = 60.0
+api_key = "$OPENROUTER_API_KEY"
+
+[crawler]
+enabled = false
+sources = []
+refresh_interval = "24h"
+
+[output.vault]
+enabled = true
+path = "~/OpenClaw-Vault/WarGames"
+
+[output.database]
+path = "~/.local/share/wargames/state.db"
+
+[costs]
+"meta-llama/llama-3.1-70b-instruct" = 0.0004
