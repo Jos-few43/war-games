@@ -119,40 +119,39 @@ async def test_round_critical_attack_contested_blue_wins():
 
     assert result.outcome != MatchOutcome.RED_CRITICAL_WIN
     assert mock_red.attack.call_count == 2  # Game continued past critical
-    assert result.blue_score >= 5  # At least the critical neutralize bonus
+    assert result.blue_score >= 5  # Critical neutralize (+5) + full block (+2) = 7
 
 
 @pytest.mark.asyncio
-async def test_blue_decisive_win():
-    """Blue blocks enough attacks to reach score threshold → BLUE_DECISIVE_WIN."""
+async def test_no_blue_decisive_win_outcome():
+    """BLUE_DECISIVE_WIN should no longer be produced — all non-red-wins become BLUE_WIN."""
     mock_red, mock_blue, mock_judge = AsyncMock(), AsyncMock(), AsyncMock()
     mock_draft_engine, mock_db = AsyncMock(), AsyncMock()
     _setup_draft(mock_draft_engine)
 
     mock_red.attack.return_value = "Weak attack"
-    # Attacks succeed but with low points
+    # All attacks miss (success=False) so red never scores
     mock_judge.evaluate_attack.return_value = (AttackResult(
-        turn=0, description="", success=True, severity=Severity.LOW, points=1, auto_win=False,
+        turn=0, description="", success=False, severity=Severity.LOW, points=0, auto_win=False,
     ), "A minor attack was attempted.")
-    _setup_bug_patch(mock_red, mock_blue)
     # Blue blocks every time with high effectiveness
     mock_judge.evaluate_defense.return_value = (True, 0.9, "Excellent defense")
     mock_blue.defend.return_value = "Comprehensive defense"
     mock_red.write_debrief.return_value = "Red debrief"
     mock_blue.write_debrief.return_value = "Blue debrief"
 
-    # score_threshold=6, each block gives Blue +3, so 2 blocks = 6 → decisive win
     engine = _make_engine(mock_red, mock_blue, mock_judge, mock_draft_engine, mock_db,
                           turn_limit=5, score_threshold=6)
     result = await engine.play(round_number=1, phase=Phase.PROMPT_INJECTION)
 
-    assert result.outcome == MatchOutcome.BLUE_DECISIVE_WIN
-    assert result.blue_score >= 6
+    assert result.outcome == MatchOutcome.BLUE_WIN
+    assert result.outcome != MatchOutcome.BLUE_DECISIVE_WIN
+    assert result.blue_score >= 5  # 5 turns * +2 each = 10
 
 
 @pytest.mark.asyncio
 async def test_partial_defense_scoring():
-    """Effectiveness 0.3-0.7 gives partial credit: Blue +1, Red -1."""
+    """Effectiveness 0.3-0.7 gives partial credit: Blue +1, Red unchanged."""
     mock_red, mock_blue, mock_judge = AsyncMock(), AsyncMock(), AsyncMock()
     mock_draft_engine, mock_db = AsyncMock(), AsyncMock()
     _setup_draft(mock_draft_engine)
@@ -173,10 +172,10 @@ async def test_partial_defense_scoring():
     result = await engine.play(round_number=1, phase=Phase.PROMPT_INJECTION)
 
     assert result.blue_score == 1  # Partial: +1
-    assert result.red_score == 2  # 3 points from attack, -1 from partial defense
+    assert result.red_score == 3  # 3 points from attack, NO erosion
     # Check the defense result
     assert result.defenses[0].points_earned == 1
-    assert result.defenses[0].points_deducted == 1
+    assert result.defenses[0].points_deducted == 0
     assert result.defenses[0].effectiveness == 0.5
 
 
@@ -236,3 +235,59 @@ async def test_blue_receives_attack_severity():
     defend_call = mock_blue.defend.call_args
     assert defend_call.kwargs.get("attack_severity") == "critical" or \
            (len(defend_call.args) > 5 and defend_call.args[5] == "critical")
+
+
+@pytest.mark.asyncio
+async def test_blue_block_does_not_erode_red_score():
+    """Red scores from attack, Blue blocks fully, but red_score stays unchanged."""
+    mock_red, mock_blue, mock_judge = AsyncMock(), AsyncMock(), AsyncMock()
+    mock_draft_engine, mock_db = AsyncMock(), AsyncMock()
+    _setup_draft(mock_draft_engine)
+    _setup_bug_patch(mock_red, mock_blue)
+
+    mock_red.attack.return_value = "SQLi on /api/users"
+    mock_judge.evaluate_attack.return_value = (AttackResult(
+        turn=0, description="", success=True, severity=Severity.MEDIUM, points=3, auto_win=False,
+    ), "A database attack was attempted.")
+    # Blue blocks with high effectiveness
+    mock_judge.evaluate_defense.return_value = (True, 0.9, "Full block")
+    mock_blue.defend.return_value = "WAF deployed"
+    mock_red.write_debrief.return_value = "Red debrief"
+    mock_blue.write_debrief.return_value = "Blue debrief"
+
+    engine = _make_engine(mock_red, mock_blue, mock_judge, mock_draft_engine, mock_db,
+                          turn_limit=1, score_threshold=100)
+    result = await engine.play(round_number=1, phase=Phase.PROMPT_INJECTION)
+
+    # Red scored 3 from attack, blue block does NOT erode it
+    assert result.red_score == 3
+    assert result.blue_score == 2  # Full block: +2
+    assert result.defenses[0].points_deducted == 0
+
+
+@pytest.mark.asyncio
+async def test_fog_summary_passed_to_blue_defend():
+    """Blue.defend() receives fog_summary (not raw attack_desc) for fog-of-war."""
+    mock_red, mock_blue, mock_judge = AsyncMock(), AsyncMock(), AsyncMock()
+    mock_draft_engine, mock_db = AsyncMock(), AsyncMock()
+    _setup_draft(mock_draft_engine)
+    _setup_bug_patch(mock_red, mock_blue)
+
+    mock_red.attack.return_value = "Detailed SQLi using UNION SELECT on /api/users"
+    fog = "A database attack was attempted."
+    mock_judge.evaluate_attack.return_value = (AttackResult(
+        turn=0, description="", success=True, severity=Severity.HIGH, points=5, auto_win=False,
+    ), fog)
+    mock_judge.evaluate_defense.return_value = (True, 0.8, "Blocked")
+    mock_blue.defend.return_value = "Defense"
+    mock_red.write_debrief.return_value = "Red debrief"
+    mock_blue.write_debrief.return_value = "Blue debrief"
+
+    engine = _make_engine(mock_red, mock_blue, mock_judge, mock_draft_engine, mock_db,
+                          turn_limit=1, score_threshold=100)
+    await engine.play(round_number=1, phase=Phase.PROMPT_INJECTION)
+
+    # Blue.defend first positional arg should be fog_summary, not the raw attack
+    defend_call = mock_blue.defend.call_args
+    assert defend_call.args[0] == fog
+    assert defend_call.args[0] != "Detailed SQLi using UNION SELECT on /api/users"
