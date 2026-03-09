@@ -58,6 +58,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Loadout overrides: red=aggressive,blue=defensive",
     )
 
+    # tournament
+    tourney_p = sub.add_parser("tournament", help="Run a Swiss-system tournament")
+    tourney_p.add_argument("--roster", required=True, help="Roster TOML file path")
+
     return parser.parse_args(argv)
 
 
@@ -316,6 +320,41 @@ def main(argv: list[str] | None = None):
             print(f"Avg cost / round   : ${avg_cost:.4f}")
 
         asyncio.run(_stats())
+
+    elif args.command == "tournament":
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+        from wargames.config import load_roster
+        from wargames.engine.swiss import TournamentRunner
+
+        roster = load_roster(Path(args.roster))
+        db_path = _default_db_path()
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        async def _tournament():
+            db = Database(db_path)
+            await db.init()
+
+            runner = TournamentRunner(roster, db)
+            standings = await runner.run()
+
+            await db.close()
+
+            print()
+            print(f"=== Tournament: {roster.name} ===")
+            print()
+            header = f"{'Rank':>4}  {'Model':<30}  {'Rating':>7}  {'W':>3}  {'L':>3}  {'D':>3}"
+            print(header)
+            print("-" * len(header))
+            for rank, entry in enumerate(standings, start=1):
+                print(
+                    f"{rank:>4}  {entry.name:<30}  {entry.rating:>7.1f}"
+                    f"  {entry.wins:>3}  {entry.losses:>3}  {entry.draws:>3}"
+                )
+
+        asyncio.run(_tournament())
 
     elif args.command == "sandbox":
         config = load_config(Path(args.config))

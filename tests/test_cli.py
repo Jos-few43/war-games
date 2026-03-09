@@ -155,3 +155,9 @@ def test_export_markdown(tmp_path, capsys):
     output = capsys.readouterr().out
     assert "| Round |" in output
     assert "| 1 |" in output
+
+
+def test_tournament_cli_parses_args():
+    args = parse_args(["tournament", "--roster", "config/roster-example.toml"])
+    assert args.command == "tournament"
+    assert args.roster == "config/roster-example.toml"
