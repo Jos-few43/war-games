@@ -1,7 +1,8 @@
+import os
 import pytest
 from pathlib import Path
-from wargames.config import load_config
-from wargames.models import GameConfig, TeamSettings
+from wargames.config import load_config, load_roster
+from wargames.models import GameConfig, TeamSettings, TournamentConfig
 
 
 def test_load_default_config():
@@ -56,6 +57,45 @@ def test_team_settings_fallback_env_var_resolution():
     )
     assert ts.fallback_api_key == "fb-secret"
     del os.environ["TEST_FALLBACK_KEY"]
+
+
+def test_load_roster(tmp_path):
+    roster = tmp_path / "roster.toml"
+    roster.write_text(
+        '[tournament]\n'
+        'name = "test-tourney"\n'
+        'rounds = 2\n'
+        'games_per_match = 4\n'
+        'game_rounds = 1\n'
+        'turn_limit = 6\n'
+        'score_threshold = 8\n'
+        '\n'
+        '[[models]]\n'
+        'name = "model-a"\n'
+        'endpoint = "http://localhost:8000/v1"\n'
+        'model_name = "a"\n'
+        '\n'
+        '[[models]]\n'
+        'name = "model-b"\n'
+        'endpoint = "http://localhost:8001/v1"\n'
+        'model_name = "b"\n'
+        'api_key = "$TEST_ROSTER_KEY"\n'
+    )
+    os.environ["TEST_ROSTER_KEY"] = "secret-123"
+    try:
+        cfg = load_roster(roster)
+        assert isinstance(cfg, TournamentConfig)
+        assert cfg.name == "test-tourney"
+        assert cfg.rounds == 2
+        assert cfg.games_per_match == 4
+        assert cfg.turn_limit == 6
+        assert cfg.score_threshold == 8
+        assert len(cfg.models) == 2
+        assert cfg.models[0].name == "model-a"
+        assert cfg.models[0].api_key == ""
+        assert cfg.models[1].api_key == "secret-123"
+    finally:
+        del os.environ["TEST_ROSTER_KEY"]
 
 
 def test_config_validates_score_threshold():

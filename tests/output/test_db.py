@@ -70,3 +70,38 @@ async def test_game_state_persistence(db):
     assert await db.get_game_state("current_phase") == "2"
     await db.set_game_state("current_round", "6")
     assert await db.get_game_state("current_round") == "6"
+
+
+@pytest.mark.asyncio
+async def test_save_and_get_tournament_match(db):
+    await db.save_tournament_match(
+        tournament_name="test-tourney",
+        swiss_round=1,
+        red_model="model-a",
+        blue_model="model-b",
+        red_score=12,
+        blue_score=8,
+        outcome="red_win",
+    )
+    await db.save_tournament_match(
+        tournament_name="test-tourney",
+        swiss_round=1,
+        red_model="model-c",
+        blue_model="model-d",
+        red_score=5,
+        blue_score=10,
+        outcome="blue_win",
+    )
+    matches = await db.get_tournament_matches("test-tourney")
+    assert len(matches) == 2
+    assert matches[0]["red_model"] == "model-a"
+    assert matches[0]["blue_model"] == "model-b"
+    assert matches[0]["red_score"] == 12
+    assert matches[0]["blue_score"] == 8
+    assert matches[0]["outcome"] == "red_win"
+    assert matches[0]["swiss_round"] == 1
+    assert matches[0]["played_at"] is not None
+    assert matches[1]["outcome"] == "blue_win"
+    # Different tournament returns empty
+    other = await db.get_tournament_matches("other-tourney")
+    assert other == []

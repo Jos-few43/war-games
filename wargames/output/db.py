@@ -155,6 +155,20 @@ CREATE TABLE IF NOT EXISTS token_usage (
 )
 """
 
+CREATE_TOURNAMENT_MATCHES = """
+CREATE TABLE IF NOT EXISTS tournament_matches (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    tournament_name  TEXT,
+    swiss_round      INTEGER,
+    red_model        TEXT,
+    blue_model       TEXT,
+    red_score        INTEGER,
+    blue_score       INTEGER,
+    outcome          TEXT,
+    played_at        TEXT DEFAULT (datetime('now'))
+)
+"""
+
 ALL_TABLES = [
     CREATE_ROUNDS,
     CREATE_ATTACKS,
@@ -168,6 +182,7 @@ ALL_TABLES = [
     CREATE_MODEL_RATINGS,
     CREATE_SEASONS,
     CREATE_TOKEN_USAGE,
+    CREATE_TOURNAMENT_MATCHES,
 ]
 
 
@@ -576,3 +591,35 @@ class Database:
             "completion_tokens": row["completion_tokens"] or 0,
             "cost": row["cost"] or 0.0,
         }
+
+    # --- tournament_matches ---
+
+    async def save_tournament_match(
+        self,
+        tournament_name: str,
+        swiss_round: int,
+        red_model: str,
+        blue_model: str,
+        red_score: int,
+        blue_score: int,
+        outcome: str,
+    ) -> None:
+        await self._conn.execute(
+            """
+            INSERT INTO tournament_matches
+                (tournament_name, swiss_round, red_model, blue_model,
+                 red_score, blue_score, outcome)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (tournament_name, swiss_round, red_model, blue_model,
+             red_score, blue_score, outcome),
+        )
+        await self._conn.commit()
+
+    async def get_tournament_matches(self, tournament_name: str) -> list[dict]:
+        cursor = await self._conn.execute(
+            "SELECT * FROM tournament_matches WHERE tournament_name = ? ORDER BY id",
+            (tournament_name,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]

@@ -1,0 +1,27 @@
+# Example tournament roster — 3 models competing in Swiss format
+# Usage: wargames tournament --roster config/roster-example.toml
+
+[tournament]
+name = "cloud-showdown"
+rounds = 3
+games_per_match = 2
+game_rounds = 1
+turn_limit = 4
+score_threshold = 10
+
+[[models]]
+name = "llama-3.1-70b"
+endpoint = "https://openrouter.ai/api/v1"
+model_name = "meta-llama/llama-3.1-70b-instruct"
+api_key = "$OPENROUTER_API_KEY"
+
+[[models]]
+name = "gemini-flash"
+endpoint = "https://openrouter.ai/api/v1"
+model_name = "google/gemini-2.0-flash-exp:free"
+api_key = "$OPENROUTER_API_KEY"
+
+[[models]]
+name = "qwen3-8b-local"
+endpoint = "http://localhost:11434/v1"
+model_name = "qwen3:8b"
