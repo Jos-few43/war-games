@@ -7,6 +7,8 @@ from pathlib import Path
 
 from wargames.crawler.cve import NVDCrawler
 from wargames.crawler.exploitdb import ExploitDBCrawler
+from wargames.config import load_config
+from wargames.engine.sandbox import SandboxRunner
 from wargames.models import MatchOutcome
 from wargames.output.db import Database
 
@@ -42,6 +44,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     export_p.add_argument("--format", default="markdown", choices=["markdown", "json"])
     export_p.add_argument("--output", default=None, help="Output file path (default: stdout)")
 
+    # ladder
+    sub.add_parser("ladder", help="Show model ELO leaderboard")
+
+    # stats
+    sub.add_parser("stats", help="Show aggregate game statistics")
+
+    # sandbox
+    sandbox_p = sub.add_parser("sandbox", help="Run a single-round sandbox game")
+    sandbox_p.add_argument("--config", default="config/default.toml", help="Config file path")
+    sandbox_p.add_argument(
+        "--loadout", default=None,
+        help="Loadout overrides: red=aggressive,blue=defensive",
+    )
+
     return parser.parse_args(argv)
 
 
@@ -69,7 +85,6 @@ def main(argv: list[str] | None = None):
             level=logging.INFO,
             format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         )
-        from wargames.config import load_config
         from wargames.worker import Worker
         config = load_config(Path(args.config))
         worker = Worker(config)
@@ -226,6 +241,138 @@ def main(argv: list[str] | None = None):
                 print(output)
 
         asyncio.run(_export())
+
+    elif args.command == "ladder":
+        db_path = _default_db_path()
+
+        async def _ladder():
+            db = Database(db_path)
+            await db.init()
+            ratings = await db.get_all_ratings()
+            await db.close()
+
+            if not ratings:
+                print("No ratings yet. Run a season first.")
+                return
+
+            header = f"{'Rank':>4}  {'Model':<30}  {'Rating':>7}  {'W':>5}  {'L':>5}  {'D':>5}  Last Played"
+            print(header)
+            print("-" * len(header))
+            for rank, row in enumerate(ratings, start=1):
+                last = row.get("last_played") or "—"
+                print(
+                    f"{rank:>4}  {row['model_name']:<30}  {row['rating']:>7.1f}"
+                    f"  {row['wins']:>5}  {row['losses']:>5}  {row['draws']:>5}  {last}"
+                )
+
+        asyncio.run(_ladder())
+
+    elif args.command == "stats":
+        db_path = _default_db_path()
+
+        async def _stats():
+            db = Database(db_path)
+            await db.init()
+            stats = await db.get_season_stats()
+            ratings = await db.get_all_ratings()
+            tokens = await db.get_token_totals()
+            await db.close()
+
+            # Season stats
+            print("=== Season Stats ===")
+            print(f"Total rounds : {stats['total_rounds']}")
+            print(f"Red wins     : {stats['red_wins']}")
+            print(f"Blue wins    : {stats['blue_wins']}")
+            print(f"Auto wins    : {stats['auto_wins']}")
+            print()
+
+            # Model ratings
+            print("=== Model Ratings ===")
+            if not ratings:
+                print("No ratings yet.")
+            else:
+                header = f"  {'Model':<30}  {'Rating':>7}  {'W':>5}  {'L':>5}  {'D':>5}"
+                print(header)
+                print("  " + "-" * (len(header) - 2))
+                for row in ratings:
+                    print(
+                        f"  {row['model_name']:<30}  {row['rating']:>7.1f}"
+                        f"  {row['wins']:>5}  {row['losses']:>5}  {row['draws']:>5}"
+                    )
+            print()
+
+            # Token usage
+            print("=== Token Usage ===")
+            total_rounds = stats["total_rounds"] or 1  # avoid division by zero
+            prompt_tok = tokens["prompt_tokens"]
+            completion_tok = tokens["completion_tokens"]
+            total_cost = tokens["cost"]
+            avg_tokens = (prompt_tok + completion_tok) / total_rounds
+            avg_cost = total_cost / total_rounds
+            print(f"Prompt tokens      : {prompt_tok:,}")
+            print(f"Completion tokens  : {completion_tok:,}")
+            print(f"Total cost         : ${total_cost:.4f}")
+            print(f"Avg tokens / round : {avg_tokens:.1f}")
+            print(f"Avg cost / round   : ${avg_cost:.4f}")
+
+        asyncio.run(_stats())
+
+    elif args.command == "sandbox":
+        config = load_config(Path(args.config))
+
+        # Parse --loadout into a dict, e.g. "red=aggressive,blue=defensive"
+        loadout_overrides: dict[str, str] | None = None
+        if args.loadout:
+            loadout_overrides = {}
+            for item in args.loadout.split(","):
+                item = item.strip()
+                if "=" in item:
+                    key, _, value = item.partition("=")
+                    loadout_overrides[key.strip()] = value.strip()
+
+        runner = SandboxRunner(config)
+
+        async def _sandbox():
+            result = await runner.run(loadout_overrides=loadout_overrides)
+
+            print(f"=== Sandbox Round ===")
+            print(f"Phase: {result.phase.name}  |  Outcome: {result.outcome.value}")
+            print(f"Score: Red {result.red_score} — Blue {result.blue_score} (threshold {result.blue_threshold})")
+            print()
+
+            if result.red_draft or result.blue_draft:
+                print("-- Draft --")
+                for pick in result.red_draft:
+                    print(f"  RED  {pick.resource_name} ({pick.resource_category})")
+                for pick in result.blue_draft:
+                    print(f"  BLUE {pick.resource_name} ({pick.resource_category})")
+                print()
+
+            print("-- Attacks --")
+            for a in result.attacks:
+                status = "HIT" if a.success else "MISS"
+                sev = f" [{a.severity.value}]" if a.severity else ""
+                print(f"  T{a.turn}: {status}{sev} +{a.points}pts -- {a.description[:80]}")
+            print()
+
+            print("-- Defenses --")
+            for d in result.defenses:
+                status = "BLOCKED" if d.blocked else "MISSED"
+                print(f"  T{d.turn}: {status} -{d.points_deducted}pts -- {d.description[:80]}")
+            print()
+
+            if result.bug_reports:
+                print("-- Bug Reports --")
+                for b in result.bug_reports:
+                    print(f"  [{b.severity.value}] {b.title}")
+                print()
+
+            if result.patches:
+                print("-- Patches --")
+                for p in result.patches:
+                    print(f"  {p.title} -- fixes: {p.fixes[:60]}")
+
+        asyncio.run(_sandbox())
 
 
 if __name__ == "__main__":

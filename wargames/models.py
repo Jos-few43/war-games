@@ -65,6 +65,8 @@ class TeamSettings(BaseModel):
     fallback_model: str = Field(default="", description="Fallback base URL")
     fallback_model_name: str = Field(default="", description="Fallback model name")
     fallback_api_key: str = Field(default="", description="Fallback API key or env var ref")
+    loadout: str = Field(default="", description="Named loadout preset")
+    loadout_custom: list[str] = Field(default_factory=list, description="Custom resource list")
 
     @model_validator(mode="after")
     def resolve_env_vars(self):
@@ -101,12 +103,33 @@ class OutputSettings(BaseModel):
     database: DatabaseOutput
 
 
+class CostsSettings(BaseModel):
+    rates: dict[str, float] = Field(default_factory=dict, description="Model name to $/1K tokens rate")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _absorb_flat_rates(cls, data: object) -> object:
+        """Allow flat TOML [costs] sections where keys are model names directly."""
+        if not isinstance(data, dict):
+            return data
+        known_fields = {"rates"}
+        flat_rates = {k: v for k, v in data.items() if k not in known_fields and isinstance(v, (int, float))}
+        if flat_rates:
+            merged = dict(data.get("rates") or {})
+            merged.update(flat_rates)
+            cleaned = {k: v for k, v in data.items() if k in known_fields}
+            cleaned["rates"] = merged
+            return cleaned
+        return data
+
+
 class GameConfig(BaseModel):
     game: GameSettings
     draft: DraftSettings
     teams: TeamsSettings
     crawler: CrawlerSettings = CrawlerSettings()
     output: OutputSettings | None = None
+    costs: CostsSettings = CostsSettings()
 
 
 # --- Game state models ---

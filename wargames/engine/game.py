@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from collections.abc import AsyncGenerator
 from wargames.models import GameConfig, Phase, RoundResult, MatchOutcome
@@ -11,6 +13,7 @@ from wargames.engine.judge import Judge
 from wargames.engine.draft import DraftEngine
 from wargames.engine.round import RoundEngine
 from wargames.engine.strategy import extract_strategies, save_strategies, get_top_strategies, update_win_rates
+from wargames.engine.elo import calculate_elo
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +32,7 @@ class GameEngine:
         self._current_phase = Phase.PROMPT_INJECTION
         self._current_round = 0
         self._on_event = None
+        self._season_id: str = ""
 
     def on_event(self, callback):
         """Set event callback for live updates."""
@@ -40,6 +44,15 @@ class GameEngine:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db = Database(db_path)
         await self.db.init()
+
+        # Generate and persist a new season record
+        self._season_id = str(uuid.uuid4())[:8]
+        started_at = datetime.now(timezone.utc).isoformat()
+        await self.db.save_season(
+            season_id=self._season_id,
+            config_name=self.config.game.name,
+            started_at=started_at,
+        )
 
         self._red_client = LLMClient(self.config.teams.red)
         self._blue_client = LLMClient(self.config.teams.blue)
@@ -91,6 +104,8 @@ class GameEngine:
                     blue_lessons=blue_lessons,
                     red_strategies=red_strat_texts,
                     blue_strategies=blue_strat_texts,
+                    red_settings=self.config.teams.red,
+                    blue_settings=self.config.teams.blue,
                 )
             except Exception as exc:
                 logger.error("Round %d failed: %s — skipping to next round", round_num, exc)
@@ -109,16 +124,74 @@ class GameEngine:
             if result.blue_debrief:
                 red_lessons.append(result.blue_debrief[:500])
 
+            won_red = result.outcome in (MatchOutcome.RED_WIN, MatchOutcome.RED_AUTO_WIN, MatchOutcome.RED_CRITICAL_WIN)
+
             # Extract and save strategies, then update win rates
             try:
                 red_strats = await extract_strategies(result, "red", self._judge_client)
                 blue_strats = await extract_strategies(result, "blue", self._judge_client)
                 await save_strategies(red_strats + blue_strats, self.db)
-                won_red = result.outcome in (MatchOutcome.RED_WIN, MatchOutcome.RED_AUTO_WIN, MatchOutcome.RED_CRITICAL_WIN)
                 await update_win_rates("red", self._current_phase.value, won_red, self.db)
                 await update_win_rates("blue", self._current_phase.value, not won_red, self.db)
             except Exception as exc:
                 logger.warning("Strategy extraction failed for round %d: %s", round_num, exc)
+
+            # Update ELO ratings for both models
+            try:
+                red_model = self.config.teams.red.model_name
+                blue_model = self.config.teams.blue.model_name
+
+                red_row = await self.db.get_model_rating(red_model)
+                blue_row = await self.db.get_model_rating(blue_model)
+
+                red_rating = red_row["rating"] if red_row else 1500.0
+                blue_rating = blue_row["rating"] if blue_row else 1500.0
+                red_wins = red_row["wins"] if red_row else 0
+                red_losses = red_row["losses"] if red_row else 0
+                red_draws = red_row["draws"] if red_row else 0
+                blue_wins = blue_row["wins"] if blue_row else 0
+                blue_losses = blue_row["losses"] if blue_row else 0
+                blue_draws = blue_row["draws"] if blue_row else 0
+
+                is_draw = result.outcome == MatchOutcome.TIMEOUT
+
+                if is_draw:
+                    new_red_rating, new_blue_rating = calculate_elo(red_rating, blue_rating, draw=True)
+                    red_draws += 1
+                    blue_draws += 1
+                elif won_red:
+                    new_red_rating, new_blue_rating = calculate_elo(red_rating, blue_rating)
+                    red_wins += 1
+                    blue_losses += 1
+                else:
+                    new_blue_rating, new_red_rating = calculate_elo(blue_rating, red_rating)
+                    blue_wins += 1
+                    red_losses += 1
+
+                await self.db.save_model_rating(red_model, new_red_rating, red_wins, red_losses, red_draws)
+                await self.db.save_model_rating(blue_model, new_blue_rating, blue_wins, blue_losses, blue_draws)
+            except Exception as exc:
+                logger.warning("ELO update failed for round %d: %s", round_num, exc)
+
+            # Save token usage
+            try:
+                costs = self.config.costs.rates if self.config.costs else {}
+                for team_name, client in [("red", self._red_client), ("blue", self._blue_client), ("judge", self._judge_client)]:
+                    usage = client.get_usage(reset=True)
+                    model = usage["model_used"]
+                    rate = costs.get(model, 0.0)
+                    total_tokens = usage["prompt_tokens"] + usage["completion_tokens"]
+                    cost = (total_tokens / 1000.0) * rate
+                    await self.db.save_token_usage(
+                        round_number=round_num,
+                        team=team_name,
+                        prompt_tokens=usage["prompt_tokens"],
+                        completion_tokens=usage["completion_tokens"],
+                        model_used=model,
+                        cost=cost,
+                    )
+            except Exception as exc:
+                logger.warning("Token usage tracking failed for round %d: %s", round_num, exc)
 
             # Check phase advancement
             new_phase = self._check_phase_advance(self._current_phase)
@@ -158,5 +231,22 @@ class GameEngine:
             await self._blue_client.close()
         if self._judge_client:
             await self._judge_client.close()
+        if self.db and self._season_id:
+            try:
+                stats = await self.db.get_season_stats()
+                if stats["red_wins"] > stats["blue_wins"]:
+                    winner = self.config.teams.red.model_name
+                elif stats["blue_wins"] > stats["red_wins"]:
+                    winner = self.config.teams.blue.model_name
+                else:
+                    winner = "draw"
+                ended_at = datetime.now(timezone.utc).isoformat()
+                await self.db.end_season(
+                    season_id=self._season_id,
+                    ended_at=ended_at,
+                    winner=winner,
+                )
+            except Exception as exc:
+                logger.warning("Failed to finalize season %s: %s", self._season_id, exc)
         if self.db:
             await self.db.close()

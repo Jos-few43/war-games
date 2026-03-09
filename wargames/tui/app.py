@@ -42,6 +42,16 @@ class RecentReports(Static):
         yield Static("No rounds yet.", id="recent-list")
 
 
+class TokenPanel(Static):
+    """Live token usage and cost display."""
+
+    def compose(self) -> ComposeResult:
+        yield Static("TOKENS & COST", classes="section-title")
+        yield Static("Red: -- tokens ($--)", id="red-tokens")
+        yield Static("Blue: -- tokens ($--)", id="blue-tokens")
+        yield Static("Total cost: $--", id="total-cost")
+
+
 class WarGamesTUI(App):
     TITLE = "War Games"
     CSS = """
@@ -83,6 +93,11 @@ class WarGamesTUI(App):
         border: solid $secondary;
         padding: 0 1;
     }
+    TokenPanel {
+        width: 1fr;
+        border: solid $warning;
+        padding: 0 1;
+    }
     """
 
     BINDINGS = [
@@ -108,6 +123,7 @@ class WarGamesTUI(App):
         with Horizontal(id="bottom"):
             yield SeasonStats()
             yield RecentReports()
+            yield TokenPanel()
         yield Footer()
 
     def on_mount(self):
@@ -141,6 +157,11 @@ class WarGamesTUI(App):
                 outcome = data.get("outcome", "?")
                 score = data.get("red_score", "?")
                 feed.write(f"[bold]━━━ ROUND COMPLETE: {outcome} (score: {score}) ━━━[/]")
+            elif event_type == "token_usage":
+                team = data.get("team", "?")
+                tokens = data.get("tokens", 0)
+                cost = data.get("cost", 0.0)
+                feed.write(f"[dim]TOKENS {team}: {tokens:,} (${cost:.4f})[/]")
 
     async def refresh_data(self):
         """Poll SQLite for latest state and update widgets."""
@@ -189,6 +210,29 @@ class WarGamesTUI(App):
                     for r in recent:
                         lines.append(f"R{r['round_number']}: {r['outcome']} (score: {r['red_score']})")
                     self.query_one("#recent-list", Static).update("\n".join(lines))
+
+                # Token usage
+                try:
+                    cursor = await db.execute(
+                        "SELECT team, SUM(prompt_tokens + completion_tokens) as total_tokens, "
+                        "SUM(cost) as total_cost FROM token_usage GROUP BY team"
+                    )
+                    token_rows = await cursor.fetchall()
+                    for tr in token_rows:
+                        team = tr["team"]
+                        if team in ("red", "blue"):
+                            self.query_one(f"#{team}-tokens", Static).update(
+                                f"{team.title()}: {tr['total_tokens']:,} tokens (${tr['total_cost']:.4f})"
+                            )
+
+                    cursor = await db.execute(
+                        "SELECT COALESCE(SUM(cost), 0) as total FROM token_usage"
+                    )
+                    cost_row = await cursor.fetchone()
+                    if cost_row:
+                        self.query_one("#total-cost", Static).update(f"Total cost: ${cost_row['total']:.4f}")
+                except Exception:
+                    pass  # token_usage table may not exist yet
 
         except Exception:
             pass  # DB may not exist yet
