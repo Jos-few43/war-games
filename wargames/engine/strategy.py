@@ -114,25 +114,24 @@ async def get_top_strategies(
     ]
 
 
-async def update_win_rates(team: str, phase: int, round_won: bool, db) -> None:
-    """Update win_rate for all strategies of a team/phase using running average."""
+async def update_win_rates(*, strategy_ids: list[int], round_won: bool, db) -> None:
+    """Update win_rate only for strategies that were actually used this round."""
+    if not strategy_ids:
+        return
     win_val = 1.0 if round_won else 0.0
-
+    placeholders = ",".join("?" for _ in strategy_ids)
     cursor = await db._conn.execute(
-        "SELECT id, win_rate, usage_count FROM strategies WHERE team = ? AND phase = ?",
-        (team, phase),
+        f"SELECT id, win_rate, usage_count FROM strategies WHERE id IN ({placeholders})",
+        strategy_ids,
     )
     rows = await cursor.fetchall()
-
     for row in rows:
         old_rate = row["win_rate"]
         old_count = row["usage_count"]
         new_count = old_count + 1
         new_rate = (old_rate * old_count + win_val) / new_count
-
         await db._conn.execute(
             "UPDATE strategies SET win_rate = ?, usage_count = ? WHERE id = ?",
             (new_rate, new_count, row["id"]),
         )
-
     await db._conn.commit()

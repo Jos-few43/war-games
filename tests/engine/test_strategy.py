@@ -169,7 +169,8 @@ async def test_update_win_rates(tmp_path: Path):
     )
     await save_strategies([strategy], db)
 
-    await update_win_rates(team="red", phase=1, round_won=True, db=db)
+    loaded = await get_top_strategies(team="red", phase=1, db=db)
+    await update_win_rates(strategy_ids=[loaded[0].id], round_won=True, db=db)
 
     loaded = await get_top_strategies(team="red", phase=1, db=db)
     assert len(loaded) == 1
@@ -197,7 +198,8 @@ async def test_update_win_rates_loss(tmp_path: Path):
     )
     await save_strategies([strategy], db)
 
-    await update_win_rates(team="blue", phase=3, round_won=False, db=db)
+    loaded = await get_top_strategies(team="blue", phase=3, db=db)
+    await update_win_rates(strategy_ids=[loaded[0].id], round_won=False, db=db)
 
     loaded = await get_top_strategies(team="blue", phase=3, db=db)
     # new_rate = (1.0 * 2 + 0.0) / 3 = 2.0 / 3 ≈ 0.6667
@@ -239,6 +241,43 @@ async def test_strategy_has_id_after_load(tmp_path: Path):
     assert len(loaded) == 1
     assert loaded[0].id is not None
     assert isinstance(loaded[0].id, int)
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_update_win_rates_by_id(tmp_path: Path):
+    """Only strategies with specified IDs get their win rates updated."""
+    db = Database(tmp_path / "test.db")
+    await db.init()
+    strategies = [
+        Strategy(team="red", phase=1, strategy_type="attack", content="Used strategy", win_rate=0.5, usage_count=2, created_round=1),
+        Strategy(team="red", phase=1, strategy_type="attack", content="Not used strategy", win_rate=0.5, usage_count=2, created_round=1),
+    ]
+    await save_strategies(strategies, db)
+    loaded = await get_top_strategies(team="red", phase=1, db=db)
+    used_id = next(s.id for s in loaded if s.content == "Used strategy")
+    await update_win_rates(strategy_ids=[used_id], round_won=True, db=db)
+    reloaded = await get_top_strategies(team="red", phase=1, db=db)
+    used = next(s for s in reloaded if s.content == "Used strategy")
+    not_used = next(s for s in reloaded if s.content == "Not used strategy")
+    assert used.win_rate == pytest.approx(2.0 / 3, rel=1e-4)
+    assert used.usage_count == 3
+    assert not_used.win_rate == pytest.approx(0.5)
+    assert not_used.usage_count == 2
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_update_win_rates_empty_ids(tmp_path: Path):
+    """Empty ID list is a no-op."""
+    db = Database(tmp_path / "test.db")
+    await db.init()
+    strategy = Strategy(team="red", phase=1, strategy_type="attack", content="Some strat", win_rate=0.5, usage_count=2, created_round=1)
+    await save_strategies([strategy], db)
+    await update_win_rates(strategy_ids=[], round_won=True, db=db)
+    loaded = await get_top_strategies(team="red", phase=1, db=db)
+    assert loaded[0].win_rate == pytest.approx(0.5)
+    assert loaded[0].usage_count == 2
     await db.close()
 
 
