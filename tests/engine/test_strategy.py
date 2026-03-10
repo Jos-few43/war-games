@@ -410,3 +410,38 @@ async def test_dedup_allows_different_strategies(tmp_path: Path):
     loaded = await get_top_strategies(team="red", phase=1, db=db, limit=10)
     assert len(loaded) == 2
     await db.close()
+
+
+@pytest.mark.asyncio
+async def test_time_decay_favors_recent(tmp_path: Path):
+    """Recent strategy with moderate win rate beats old strategy with high win rate."""
+    db = Database(tmp_path / "test.db")
+    await db.init()
+    strategies = [
+        Strategy(team="red", phase=1, strategy_type="attack", content="Old winner",
+                 win_rate=0.8, usage_count=10, created_round=1),
+        Strategy(team="red", phase=1, strategy_type="attack", content="Recent moderate",
+                 win_rate=0.7, usage_count=3, created_round=9),
+    ]
+    await save_strategies(strategies, db)
+    # At round 10, recent strategy should rank higher due to recency bonus
+    loaded = await get_top_strategies(team="red", phase=1, db=db, current_round=10)
+    assert loaded[0].content == "Recent moderate"
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_time_decay_without_round_falls_back(tmp_path: Path):
+    """Without current_round, ordering falls back to pure win_rate DESC."""
+    db = Database(tmp_path / "test.db")
+    await db.init()
+    strategies = [
+        Strategy(team="red", phase=1, strategy_type="attack", content="Lower rate",
+                 win_rate=0.5, usage_count=5, created_round=1),
+        Strategy(team="red", phase=1, strategy_type="attack", content="Higher rate",
+                 win_rate=0.9, usage_count=5, created_round=1),
+    ]
+    await save_strategies(strategies, db)
+    loaded = await get_top_strategies(team="red", phase=1, db=db)
+    assert loaded[0].content == "Higher rate"
+    await db.close()

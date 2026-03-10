@@ -104,19 +104,32 @@ async def save_strategies(strategies: list[Strategy], db, *, dedup_threshold: fl
 
 
 async def get_top_strategies(
-    team: str, phase: int, db, limit: int = 5
+    team: str, phase: int, db, limit: int = 5, current_round: int | None = None
 ) -> list[Strategy]:
-    """Query DB for top strategies ordered by win_rate DESC."""
-    cursor = await db._conn.execute(
-        """
-        SELECT id, team, phase, strategy_type, content, win_rate, usage_count, created_round
-        FROM strategies
-        WHERE team = ? AND phase = ? AND active = 1
-        ORDER BY win_rate DESC
-        LIMIT ?
-        """,
-        (team, phase, limit),
-    )
+    """Query DB for top active strategies, ranked by composite score with time decay."""
+    if current_round is not None:
+        cursor = await db._conn.execute(
+            """
+            SELECT id, team, phase, strategy_type, content, win_rate, usage_count, created_round,
+                   (win_rate * 0.7 + (1.0 / (1 + (? - created_round))) * 0.3) AS score
+            FROM strategies
+            WHERE team = ? AND phase = ? AND active = 1
+            ORDER BY score DESC
+            LIMIT ?
+            """,
+            (current_round, team, phase, limit),
+        )
+    else:
+        cursor = await db._conn.execute(
+            """
+            SELECT id, team, phase, strategy_type, content, win_rate, usage_count, created_round
+            FROM strategies
+            WHERE team = ? AND phase = ? AND active = 1
+            ORDER BY win_rate DESC
+            LIMIT ?
+            """,
+            (team, phase, limit),
+        )
     rows = await cursor.fetchall()
     return [
         Strategy(
