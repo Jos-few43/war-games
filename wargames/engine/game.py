@@ -12,7 +12,7 @@ from wargames.teams.blue import BlueTeamAgent
 from wargames.engine.judge import Judge
 from wargames.engine.draft import DraftEngine
 from wargames.engine.round import RoundEngine
-from wargames.engine.strategy import extract_strategies, save_strategies, get_top_strategies, update_win_rates
+from wargames.engine.strategy import extract_strategies, save_strategies, get_top_strategies, update_win_rates, prune_strategies
 from wargames.engine.elo import calculate_elo
 
 logger = logging.getLogger(__name__)
@@ -136,6 +136,8 @@ class GameEngine:
                 await save_strategies(red_strats + blue_strats, self.db)
                 await update_win_rates(strategy_ids=red_used_ids, round_won=won_red, db=self.db)
                 await update_win_rates(strategy_ids=blue_used_ids, round_won=not won_red, db=self.db)
+                await prune_strategies("red", self._current_phase.value, self.db)
+                await prune_strategies("blue", self._current_phase.value, self.db)
             except Exception as exc:
                 logger.warning("Strategy extraction failed for round %d: %s", round_num, exc)
 

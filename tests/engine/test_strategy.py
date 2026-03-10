@@ -9,6 +9,7 @@ import pytest
 from wargames.engine.strategy import (
     extract_strategies,
     get_top_strategies,
+    prune_strategies,
     save_strategies,
     update_win_rates,
 )
@@ -278,6 +279,62 @@ async def test_update_win_rates_empty_ids(tmp_path: Path):
     loaded = await get_top_strategies(team="red", phase=1, db=db)
     assert loaded[0].win_rate == pytest.approx(0.5)
     assert loaded[0].usage_count == 2
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_prune_underperformers(tmp_path: Path):
+    """Strategies with usage >= 3 and win_rate < 0.2 get deactivated."""
+    db = Database(tmp_path / "test.db")
+    await db.init()
+    strategies = [
+        Strategy(team="red", phase=1, strategy_type="attack", content="Winner", win_rate=0.8, usage_count=5, created_round=1),
+        Strategy(team="red", phase=1, strategy_type="attack", content="Loser", win_rate=0.1, usage_count=4, created_round=1),
+        Strategy(team="red", phase=1, strategy_type="attack", content="New loser", win_rate=0.0, usage_count=1, created_round=3),
+    ]
+    await save_strategies(strategies, db)
+    await prune_strategies(team="red", phase=1, db=db)
+    loaded = await get_top_strategies(team="red", phase=1, db=db)
+    contents = [s.content for s in loaded]
+    assert "Winner" in contents
+    assert "New loser" in contents  # kept — not enough usage to judge
+    assert "Loser" not in contents  # pruned — low win rate with enough data
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_prune_caps_pool_size(tmp_path: Path):
+    """Pool is capped at 20 active strategies per team/phase."""
+    db = Database(tmp_path / "test.db")
+    await db.init()
+    strategies = [
+        Strategy(team="blue", phase=1, strategy_type="defense", content=f"Strategy {i}",
+                 win_rate=float(i) / 25, usage_count=1, created_round=1)
+        for i in range(25)
+    ]
+    await save_strategies(strategies, db)
+    await prune_strategies(team="blue", phase=1, db=db)
+    loaded = await get_top_strategies(team="blue", phase=1, db=db, limit=50)
+    assert len(loaded) == 20
+    assert loaded[0].content == "Strategy 24"  # highest win_rate
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_pruned_strategies_remain_in_graveyard(tmp_path: Path):
+    """Pruned strategies are soft-deleted (active=0), not hard-deleted."""
+    db = Database(tmp_path / "test.db")
+    await db.init()
+    strategy = Strategy(team="red", phase=1, strategy_type="attack", content="Bad strat",
+                        win_rate=0.05, usage_count=5, created_round=1)
+    await save_strategies([strategy], db)
+    await prune_strategies(team="red", phase=1, db=db)
+    loaded = await get_top_strategies(team="red", phase=1, db=db)
+    assert len(loaded) == 0
+    cursor = await db._conn.execute("SELECT active FROM strategies WHERE content = 'Bad strat'")
+    row = await cursor.fetchone()
+    assert row is not None
+    assert row["active"] == 0
     await db.close()
 
 

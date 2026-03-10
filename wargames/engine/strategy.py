@@ -114,6 +114,40 @@ async def get_top_strategies(
     ]
 
 
+async def prune_strategies(
+    team: str, phase: int, db, *, min_uses: int = 3, min_win_rate: float = 0.2, max_pool: int = 20
+) -> None:
+    """Soft-delete underperforming strategies and cap pool size."""
+    # 1. Deactivate underperformers with enough data
+    await db._conn.execute(
+        """
+        UPDATE strategies SET active = 0
+        WHERE team = ? AND phase = ? AND active = 1
+          AND usage_count >= ? AND win_rate < ?
+        """,
+        (team, phase, min_uses, min_win_rate),
+    )
+    # 2. Cap pool size — deactivate lowest-rated excess
+    cursor = await db._conn.execute(
+        """
+        SELECT id FROM strategies
+        WHERE team = ? AND phase = ? AND active = 1
+        ORDER BY win_rate DESC
+        LIMIT -1 OFFSET ?
+        """,
+        (team, phase, max_pool),
+    )
+    excess_rows = await cursor.fetchall()
+    if excess_rows:
+        excess_ids = [row["id"] for row in excess_rows]
+        placeholders = ",".join("?" for _ in excess_ids)
+        await db._conn.execute(
+            f"UPDATE strategies SET active = 0 WHERE id IN ({placeholders})",
+            excess_ids,
+        )
+    await db._conn.commit()
+
+
 async def update_win_rates(*, strategy_ids: list[int], round_won: bool, db) -> None:
     """Update win_rate only for strategies that were actually used this round."""
     if not strategy_ids:
