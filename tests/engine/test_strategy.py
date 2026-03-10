@@ -223,3 +223,38 @@ async def test_get_top_strategies_limit(tmp_path: Path):
     assert len(loaded) == 3
 
     await db.close()
+
+
+@pytest.mark.asyncio
+async def test_strategy_has_id_after_load(tmp_path: Path):
+    """Strategies loaded from DB have their integer id set."""
+    db = Database(tmp_path / "test.db")
+    await db.init()
+    strategy = Strategy(
+        team="red", phase=1, strategy_type="attack",
+        content="Test strategy with id", win_rate=0.5, usage_count=1, created_round=1,
+    )
+    await save_strategies([strategy], db)
+    loaded = await get_top_strategies(team="red", phase=1, db=db)
+    assert len(loaded) == 1
+    assert loaded[0].id is not None
+    assert isinstance(loaded[0].id, int)
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_inactive_strategies_not_returned(tmp_path: Path):
+    """Strategies with active=0 are excluded from get_top_strategies."""
+    db = Database(tmp_path / "test.db")
+    await db.init()
+    strategies = [
+        Strategy(team="red", phase=1, strategy_type="attack", content="Active one", win_rate=0.8, usage_count=3, created_round=1),
+        Strategy(team="red", phase=1, strategy_type="attack", content="Inactive one", win_rate=0.9, usage_count=3, created_round=1),
+    ]
+    await save_strategies(strategies, db)
+    await db._conn.execute("UPDATE strategies SET active = 0 WHERE content = 'Inactive one'")
+    await db._conn.commit()
+    loaded = await get_top_strategies(team="red", phase=1, db=db)
+    assert len(loaded) == 1
+    assert loaded[0].content == "Active one"
+    await db.close()

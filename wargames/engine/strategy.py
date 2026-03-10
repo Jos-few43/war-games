@@ -90,9 +90,9 @@ async def get_top_strategies(
     """Query DB for top strategies ordered by win_rate DESC."""
     cursor = await db._conn.execute(
         """
-        SELECT team, phase, strategy_type, content, win_rate, usage_count, created_round
+        SELECT id, team, phase, strategy_type, content, win_rate, usage_count, created_round
         FROM strategies
-        WHERE team = ? AND phase = ?
+        WHERE team = ? AND phase = ? AND active = 1
         ORDER BY win_rate DESC
         LIMIT ?
         """,
@@ -101,6 +101,7 @@ async def get_top_strategies(
     rows = await cursor.fetchall()
     return [
         Strategy(
+            id=row["id"],
             team=row["team"],
             phase=row["phase"],
             strategy_type=row["strategy_type"],

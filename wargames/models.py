@@ -234,6 +234,7 @@ class RoundResult(BaseModel):
 
 
 class Strategy(BaseModel):
+    id: int | None = None
     team: str
     phase: int
     strategy_type: str  # "attack", "defense", "draft"
