@@ -1,0 +1,20 @@
+[attack_points]
+low = 1
+medium = 3
+high = 5
+critical = 8
+
+[defense_rewards]
+full_block_threshold = 0.7
+partial_block_threshold = 0.3
+full_block_points = 2
+partial_block_points = 1
+critical_neutralize_threshold = 0.5
+critical_neutralize_points = 5
+
+[win_conditions]
+score_threshold = 10
+
+[phase_advance]
+min_rounds = 3
+min_avg_score = 7.5
