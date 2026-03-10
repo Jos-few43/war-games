@@ -57,3 +57,6 @@ path = "~/.local/share/wargames/state.db"
 [costs]
 "llama-3-70b" = 0.00059
 "qwen3:4b" = 0.0
+
+[scoring]
+profile = "balanced"

@@ -98,6 +98,14 @@ def test_load_roster(tmp_path):
         del os.environ["TEST_ROSTER_KEY"]
 
 
+def test_default_config_has_scoring():
+    from wargames.models import ScoringProfile
+    config = load_config(Path("config/default.toml"))
+    assert config.scoring.attack_points.critical == 8
+    assert config.scoring.defense_rewards.full_block_points == 2
+    assert config.scoring.phase_advance.min_rounds == 3
+
+
 def test_config_validates_score_threshold():
     with pytest.raises(ValueError):
         GameConfig.model_validate({

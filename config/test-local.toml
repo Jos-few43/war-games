@@ -41,3 +41,6 @@ path = "~/OpenClaw-Vault/WarGames"
 
 [output.database]
 path = "~/.local/share/wargames/state.db"
+
+[scoring]
+profile = "balanced"
