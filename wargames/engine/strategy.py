@@ -62,24 +62,43 @@ async def extract_strategies(result: RoundResult, team: str, llm) -> list[Strate
     return strategies
 
 
-async def save_strategies(strategies: list[Strategy], db) -> None:
-    """Insert Strategy objects into the strategies table."""
+def _word_overlap(a: str, b: str) -> float:
+    """Return Jaccard similarity of word sets between two strings."""
+    words_a = set(a.lower().split())
+    words_b = set(b.lower().split())
+    if not words_a or not words_b:
+        return 0.0
+    intersection = words_a & words_b
+    union = words_a | words_b
+    return len(intersection) / len(union)
+
+
+async def save_strategies(strategies: list[Strategy], db, *, dedup_threshold: float = 0.7) -> None:
+    """Insert Strategy objects, skipping duplicates that overlap with existing strategies."""
     for s in strategies:
+        # Check for duplicates against ALL strategies (active and inactive)
+        cursor = await db._conn.execute(
+            "SELECT content FROM strategies WHERE team = ? AND phase = ? AND strategy_type = ?",
+            (s.team, s.phase, s.strategy_type),
+        )
+        existing_rows = await cursor.fetchall()
+
+        is_duplicate = False
+        for row in existing_rows:
+            if _word_overlap(s.content, row["content"]) >= dedup_threshold:
+                is_duplicate = True
+                break
+
+        if is_duplicate:
+            continue
+
         await db._conn.execute(
             """
             INSERT INTO strategies
                 (team, phase, strategy_type, content, win_rate, usage_count, created_round)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                s.team,
-                s.phase,
-                s.strategy_type,
-                s.content,
-                s.win_rate,
-                s.usage_count,
-                s.created_round,
-            ),
+            (s.team, s.phase, s.strategy_type, s.content, s.win_rate, s.usage_count, s.created_round),
         )
     await db._conn.commit()
 

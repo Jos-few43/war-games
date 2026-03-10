@@ -354,3 +354,59 @@ async def test_inactive_strategies_not_returned(tmp_path: Path):
     assert len(loaded) == 1
     assert loaded[0].content == "Active one"
     await db.close()
+
+
+@pytest.mark.asyncio
+async def test_dedup_skips_similar_active(tmp_path: Path):
+    """New strategy with >70% word overlap to existing active strategy is skipped."""
+    db = Database(tmp_path / "test.db")
+    await db.init()
+    existing = Strategy(team="red", phase=1, strategy_type="attack",
+                        content="Use SQL injection to bypass authentication and access admin panel",
+                        win_rate=0.5, usage_count=2, created_round=1)
+    await save_strategies([existing], db)
+    duplicate = Strategy(team="red", phase=1, strategy_type="attack",
+                         content="Use SQL injection to bypass authentication and access the admin panel directly",
+                         win_rate=0.0, usage_count=0, created_round=2)
+    await save_strategies([duplicate], db)
+    loaded = await get_top_strategies(team="red", phase=1, db=db, limit=10)
+    assert len(loaded) == 1  # duplicate was skipped
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_dedup_skips_similar_inactive(tmp_path: Path):
+    """New strategy with >70% word overlap to graveyard strategy is also skipped."""
+    db = Database(tmp_path / "test.db")
+    await db.init()
+    graveyard = Strategy(team="blue", phase=1, strategy_type="defense",
+                         content="Deploy WAF rules to block SQL injection patterns at the perimeter",
+                         win_rate=0.1, usage_count=5, created_round=1)
+    await save_strategies([graveyard], db)
+    await db._conn.execute("UPDATE strategies SET active = 0 WHERE content LIKE '%WAF rules%'")
+    await db._conn.commit()
+    rehash = Strategy(team="blue", phase=1, strategy_type="defense",
+                      content="Deploy WAF rules to block SQL injection patterns at the network perimeter",
+                      win_rate=0.0, usage_count=0, created_round=3)
+    await save_strategies([rehash], db)
+    loaded = await get_top_strategies(team="blue", phase=1, db=db, limit=10)
+    assert len(loaded) == 0
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_dedup_allows_different_strategies(tmp_path: Path):
+    """Strategies with <70% word overlap are allowed."""
+    db = Database(tmp_path / "test.db")
+    await db.init()
+    existing = Strategy(team="red", phase=1, strategy_type="attack",
+                        content="Use SQL injection to bypass authentication",
+                        win_rate=0.5, usage_count=2, created_round=1)
+    await save_strategies([existing], db)
+    different = Strategy(team="red", phase=1, strategy_type="attack",
+                         content="Social engineering phishing campaign targeting admin credentials",
+                         win_rate=0.0, usage_count=0, created_round=2)
+    await save_strategies([different], db)
+    loaded = await get_top_strategies(team="red", phase=1, db=db, limit=10)
+    assert len(loaded) == 2
+    await db.close()
