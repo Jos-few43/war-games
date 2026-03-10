@@ -123,6 +123,36 @@ class CostsSettings(BaseModel):
         return data
 
 
+# --- Scoring profile models ---
+
+class AttackPoints(BaseModel):
+    low: int = 1
+    medium: int = 3
+    high: int = 5
+    critical: int = 8
+
+class DefenseRewards(BaseModel):
+    full_block_threshold: float = 0.7
+    partial_block_threshold: float = 0.3
+    full_block_points: int = 2
+    partial_block_points: int = 1
+    critical_neutralize_threshold: float = 0.5
+    critical_neutralize_points: int = 5
+
+class WinConditions(BaseModel):
+    score_threshold: int = 10
+
+class PhaseAdvanceSettings(BaseModel):
+    min_rounds: int = 3
+    min_avg_score: float = 7.5
+
+class ScoringProfile(BaseModel):
+    attack_points: AttackPoints = AttackPoints()
+    defense_rewards: DefenseRewards = DefenseRewards()
+    win_conditions: WinConditions = WinConditions()
+    phase_advance: PhaseAdvanceSettings = PhaseAdvanceSettings()
+
+
 class GameConfig(BaseModel):
     game: GameSettings
     draft: DraftSettings
@@ -130,6 +160,7 @@ class GameConfig(BaseModel):
     crawler: CrawlerSettings = CrawlerSettings()
     output: OutputSettings | None = None
     costs: CostsSettings = CostsSettings()
+    scoring: ScoringProfile = ScoringProfile()
 
 
 # --- Game state models ---
