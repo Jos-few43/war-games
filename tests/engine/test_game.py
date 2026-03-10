@@ -53,6 +53,7 @@ async def test_game_engine_runs_rounds(config):
 def test_phase_advances_on_threshold():
     config = load_config(Path("config/default.toml"))
     config.game.phase_advance_score = 5.0
+    config.scoring.phase_advance.min_avg_score = 5.0
     engine = GameEngine(config)
     engine._round_scores = [6.0] * 10
     new_phase = engine._check_phase_advance(Phase.PROMPT_INJECTION)
@@ -62,6 +63,7 @@ def test_phase_advances_on_threshold():
 def test_phase_does_not_advance_below_threshold():
     config = load_config(Path("config/default.toml"))
     config.game.phase_advance_score = 5.0
+    config.scoring.phase_advance.min_avg_score = 5.0
     engine = GameEngine(config)
     engine._round_scores = [3.0] * 10
     new_phase = engine._check_phase_advance(Phase.PROMPT_INJECTION)
@@ -74,6 +76,24 @@ def test_phase_does_not_advance_with_few_rounds():
     engine._round_scores = [10.0] * 2  # Only 2 rounds, need 3
     new_phase = engine._check_phase_advance(Phase.PROMPT_INJECTION)
     assert new_phase == Phase.PROMPT_INJECTION
+
+
+from wargames.models import ScoringProfile, PhaseAdvanceSettings
+
+
+def test_phase_advance_uses_scoring_profile():
+    """Phase advance should respect scoring.phase_advance settings."""
+    config = load_config(Path("config/default.toml"))
+    config.scoring.phase_advance = PhaseAdvanceSettings(min_rounds=5, min_avg_score=3.0)
+    engine = GameEngine(config)
+    engine._round_scores = [4.0, 4.0, 4.0]  # Only 3 rounds, need 5
+
+    result = engine._check_phase_advance(Phase.PROMPT_INJECTION)
+    assert result == Phase.PROMPT_INJECTION  # Not enough rounds
+
+    engine._round_scores = [4.0, 4.0, 4.0, 4.0, 4.0]  # 5 rounds, avg=4.0 >= 3.0
+    result = engine._check_phase_advance(Phase.PROMPT_INJECTION)
+    assert result == Phase.CODE_VULNS
 
 
 @pytest.mark.asyncio
@@ -173,6 +193,7 @@ async def test_game_engine_survives_round_failure(config):
 async def test_phase_advances_after_3_rounds(config):
     """Phase advances when 3 recent rounds average >= threshold."""
     config.game.phase_advance_score = 5.0
+    config.scoring.phase_advance.min_avg_score = 5.0
     engine = GameEngine(config)
     engine._round_scores = [6.0, 5.0, 7.0]
 
@@ -184,6 +205,7 @@ async def test_phase_advances_after_3_rounds(config):
 async def test_phase_does_not_advance_below_threshold(config):
     """Phase stays when average is below threshold."""
     config.game.phase_advance_score = 5.0
+    config.scoring.phase_advance.min_avg_score = 5.0
     engine = GameEngine(config)
     engine._round_scores = [2.0, 1.0, 3.0]
 
@@ -195,6 +217,7 @@ async def test_phase_does_not_advance_below_threshold(config):
 async def test_phase_does_not_advance_with_fewer_than_3_rounds(config):
     """Phase stays when fewer than 3 rounds of data exist."""
     config.game.phase_advance_score = 5.0
+    config.scoring.phase_advance.min_avg_score = 5.0
     engine = GameEngine(config)
     engine._round_scores = [8.0, 8.0]
 

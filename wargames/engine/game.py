@@ -85,6 +85,7 @@ class GameEngine:
                 draft_engine=draft_engine, db=self.db,
                 turn_limit=self.config.game.turn_limit,
                 score_threshold=self.config.game.score_threshold,
+                scoring=self.config.scoring,
             )
 
             if self._on_event:
@@ -202,11 +203,13 @@ class GameEngine:
 
     def _check_phase_advance(self, current_phase: Phase) -> Phase:
         """Check if average scores warrant advancing to next phase."""
-        if len(self._round_scores) < 3:
+        min_rounds = self.config.scoring.phase_advance.min_rounds
+        min_avg = self.config.scoring.phase_advance.min_avg_score
+        if len(self._round_scores) < min_rounds:
             return current_phase
 
-        recent_avg = sum(self._round_scores[-3:]) / 3
-        if recent_avg >= self.config.game.phase_advance_score:
+        recent_avg = sum(self._round_scores[-min_rounds:]) / min_rounds
+        if recent_avg >= min_avg:
             phase_order = [Phase.PROMPT_INJECTION, Phase.CODE_VULNS, Phase.REAL_CVES, Phase.OPEN_ENDED]
             current_idx = phase_order.index(current_phase)
             if current_idx < len(phase_order) - 1:
