@@ -66,7 +66,7 @@ async def test_chat_retries_on_read_timeout(team_settings):
     with patch.object(
         client._http, "post",
         side_effect=[httpx.ReadTimeout("timeout"), mock_success],
-    ):
+    ), patch("wargames.llm.client.asyncio.sleep", new_callable=AsyncMock):
         result = await client.chat([{"role": "user", "content": "Hi"}])
         assert result == "recovered"
 
@@ -84,7 +84,7 @@ async def test_chat_retries_on_429(team_settings):
     with patch.object(
         client._http, "post",
         side_effect=[mock_429, mock_success],
-    ):
+    ), patch("wargames.llm.client.asyncio.sleep", new_callable=AsyncMock):
         result = await client.chat([{"role": "user", "content": "Hi"}])
         assert result == "after retry"
 
@@ -124,7 +124,7 @@ async def test_chat_falls_back_on_primary_exhaustion(fallback_settings):
     ), patch.object(
         client._fallback_http, "post",
         return_value=fb_success,
-    ):
+    ), patch("wargames.llm.client.asyncio.sleep", new_callable=AsyncMock):
         result = await client.chat([{"role": "user", "content": "Hi"}])
         assert result == "fallback response"
     await client.close()
@@ -148,7 +148,7 @@ async def test_chat_no_fallback_configured(team_settings):
     with patch.object(
         client._http, "post",
         side_effect=httpx.ReadTimeout("timeout"),
-    ):
+    ), patch("wargames.llm.client.asyncio.sleep", new_callable=AsyncMock):
         with pytest.raises(httpx.ReadTimeout):
             await client.chat([{"role": "user", "content": "Hi"}])
 
@@ -163,7 +163,7 @@ async def test_fallback_raises_when_both_fail(fallback_settings):
     ), patch.object(
         client._fallback_http, "post",
         side_effect=httpx.ReadTimeout("fallback timeout"),
-    ):
+    ), patch("wargames.llm.client.asyncio.sleep", new_callable=AsyncMock):
         with pytest.raises(httpx.ReadTimeout):
             await client.chat([{"role": "user", "content": "Hi"}])
     await client.close()

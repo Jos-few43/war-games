@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from wargames.llm.client import LLMClient
 from wargames.models import TeamSettings
 import httpx
@@ -171,7 +171,7 @@ async def test_fallback_model_usage_tracked(fallback_settings):
     ), patch.object(
         client._fallback_http, "post",
         return_value=fb_response,
-    ):
+    ), patch("wargames.llm.client.asyncio.sleep", new_callable=AsyncMock):
         result = await client.chat([{"role": "user", "content": "Hi"}])
 
     assert result == "fallback reply"

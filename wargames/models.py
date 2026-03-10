@@ -60,7 +60,7 @@ class TeamSettings(BaseModel):
     model: str
     model_name: str
     temperature: float = Field(ge=0.0, le=2.0)
-    timeout: float = Field(default=120.0, description="HTTP timeout per LLM call in seconds")
+    timeout: float = Field(default=30.0, description="HTTP timeout per LLM call in seconds")
     api_key: str = Field(default="", description="API key or env var ref like $LITELLM_MASTER_KEY")
     fallback_model: str = Field(default="", description="Fallback base URL")
     fallback_model_name: str = Field(default="", description="Fallback model name")
