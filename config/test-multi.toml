@@ -18,18 +18,21 @@ name = "Red Team"
 model = "http://localhost:11434/v1"
 model_name = "qwen3:4b"
 temperature = 0.8
+timeout = 30.0
 
 [teams.blue]
 name = "Blue Team"
 model = "http://localhost:11434/v1"
 model_name = "qwen3:4b"
 temperature = 0.4
+timeout = 30.0
 
 [teams.judge]
 name = "Judge"
 model = "http://localhost:11434/v1"
 model_name = "qwen3:4b"
 temperature = 0.2
+timeout = 30.0
 
 [crawler]
 enabled = false

@@ -62,45 +62,78 @@ async def extract_strategies(result: RoundResult, team: str, llm) -> list[Strate
     return strategies
 
 
-async def save_strategies(strategies: list[Strategy], db) -> None:
-    """Insert Strategy objects into the strategies table."""
+def _word_overlap(a: str, b: str) -> float:
+    """Return Jaccard similarity of word sets between two strings."""
+    words_a = set(a.lower().split())
+    words_b = set(b.lower().split())
+    if not words_a or not words_b:
+        return 0.0
+    intersection = words_a & words_b
+    union = words_a | words_b
+    return len(intersection) / len(union)
+
+
+async def save_strategies(strategies: list[Strategy], db, *, dedup_threshold: float = 0.7) -> None:
+    """Insert Strategy objects, skipping duplicates that overlap with existing strategies."""
     for s in strategies:
+        # Check for duplicates against ALL strategies (active and inactive)
+        cursor = await db._conn.execute(
+            "SELECT content FROM strategies WHERE team = ? AND phase = ? AND strategy_type = ?",
+            (s.team, s.phase, s.strategy_type),
+        )
+        existing_rows = await cursor.fetchall()
+
+        is_duplicate = False
+        for row in existing_rows:
+            if _word_overlap(s.content, row["content"]) >= dedup_threshold:
+                is_duplicate = True
+                break
+
+        if is_duplicate:
+            continue
+
         await db._conn.execute(
             """
             INSERT INTO strategies
                 (team, phase, strategy_type, content, win_rate, usage_count, created_round)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                s.team,
-                s.phase,
-                s.strategy_type,
-                s.content,
-                s.win_rate,
-                s.usage_count,
-                s.created_round,
-            ),
+            (s.team, s.phase, s.strategy_type, s.content, s.win_rate, s.usage_count, s.created_round),
         )
     await db._conn.commit()
 
 
 async def get_top_strategies(
-    team: str, phase: int, db, limit: int = 5
+    team: str, phase: int, db, limit: int = 5, current_round: int | None = None
 ) -> list[Strategy]:
-    """Query DB for top strategies ordered by win_rate DESC."""
-    cursor = await db._conn.execute(
-        """
-        SELECT team, phase, strategy_type, content, win_rate, usage_count, created_round
-        FROM strategies
-        WHERE team = ? AND phase = ?
-        ORDER BY win_rate DESC
-        LIMIT ?
-        """,
-        (team, phase, limit),
-    )
+    """Query DB for top active strategies, ranked by composite score with time decay."""
+    if current_round is not None:
+        cursor = await db._conn.execute(
+            """
+            SELECT id, team, phase, strategy_type, content, win_rate, usage_count, created_round,
+                   (win_rate * 0.7 + (1.0 / (1 + (? - created_round))) * 0.3) AS score
+            FROM strategies
+            WHERE team = ? AND phase = ? AND active = 1
+            ORDER BY score DESC
+            LIMIT ?
+            """,
+            (current_round, team, phase, limit),
+        )
+    else:
+        cursor = await db._conn.execute(
+            """
+            SELECT id, team, phase, strategy_type, content, win_rate, usage_count, created_round
+            FROM strategies
+            WHERE team = ? AND phase = ? AND active = 1
+            ORDER BY win_rate DESC
+            LIMIT ?
+            """,
+            (team, phase, limit),
+        )
     rows = await cursor.fetchall()
     return [
         Strategy(
+            id=row["id"],
             team=row["team"],
             phase=row["phase"],
             strategy_type=row["strategy_type"],
@@ -113,25 +146,58 @@ async def get_top_strategies(
     ]
 
 
-async def update_win_rates(team: str, phase: int, round_won: bool, db) -> None:
-    """Update win_rate for all strategies of a team/phase using running average."""
-    win_val = 1.0 if round_won else 0.0
-
+async def prune_strategies(
+    team: str, phase: int, db, *, min_uses: int = 3, min_win_rate: float = 0.2, max_pool: int = 20
+) -> None:
+    """Soft-delete underperforming strategies and cap pool size."""
+    # 1. Deactivate underperformers with enough data
+    await db._conn.execute(
+        """
+        UPDATE strategies SET active = 0
+        WHERE team = ? AND phase = ? AND active = 1
+          AND usage_count >= ? AND win_rate < ?
+        """,
+        (team, phase, min_uses, min_win_rate),
+    )
+    # 2. Cap pool size — deactivate lowest-rated excess
     cursor = await db._conn.execute(
-        "SELECT id, win_rate, usage_count FROM strategies WHERE team = ? AND phase = ?",
-        (team, phase),
+        """
+        SELECT id FROM strategies
+        WHERE team = ? AND phase = ? AND active = 1
+        ORDER BY win_rate DESC
+        LIMIT -1 OFFSET ?
+        """,
+        (team, phase, max_pool),
+    )
+    excess_rows = await cursor.fetchall()
+    if excess_rows:
+        excess_ids = [row["id"] for row in excess_rows]
+        placeholders = ",".join("?" for _ in excess_ids)
+        await db._conn.execute(
+            f"UPDATE strategies SET active = 0 WHERE id IN ({placeholders})",
+            excess_ids,
+        )
+    await db._conn.commit()
+
+
+async def update_win_rates(*, strategy_ids: list[int], round_won: bool, db) -> None:
+    """Update win_rate only for strategies that were actually used this round."""
+    if not strategy_ids:
+        return
+    win_val = 1.0 if round_won else 0.0
+    placeholders = ",".join("?" for _ in strategy_ids)
+    cursor = await db._conn.execute(
+        f"SELECT id, win_rate, usage_count FROM strategies WHERE id IN ({placeholders})",
+        strategy_ids,
     )
     rows = await cursor.fetchall()
-
     for row in rows:
         old_rate = row["win_rate"]
         old_count = row["usage_count"]
         new_count = old_count + 1
         new_rate = (old_rate * old_count + win_val) / new_count
-
         await db._conn.execute(
             "UPDATE strategies SET win_rate = ?, usage_count = ? WHERE id = ?",
             (new_rate, new_count, row["id"]),
         )
-
     await db._conn.commit()

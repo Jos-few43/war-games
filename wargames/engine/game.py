@@ -12,7 +12,7 @@ from wargames.teams.blue import BlueTeamAgent
 from wargames.engine.judge import Judge
 from wargames.engine.draft import DraftEngine
 from wargames.engine.round import RoundEngine
-from wargames.engine.strategy import extract_strategies, save_strategies, get_top_strategies, update_win_rates
+from wargames.engine.strategy import extract_strategies, save_strategies, get_top_strategies, update_win_rates, prune_strategies
 from wargames.engine.elo import calculate_elo
 
 logger = logging.getLogger(__name__)
@@ -92,10 +92,12 @@ class GameEngine:
                 round_engine.on_event(self._on_event)
 
             # Load top strategies for current phase before each round
-            red_top = await get_top_strategies("red", self._current_phase.value, self.db)
-            blue_top = await get_top_strategies("blue", self._current_phase.value, self.db)
+            red_top = await get_top_strategies("red", self._current_phase.value, self.db, current_round=round_num)
+            blue_top = await get_top_strategies("blue", self._current_phase.value, self.db, current_round=round_num)
             red_strat_texts = [s.content for s in red_top]
             blue_strat_texts = [s.content for s in blue_top]
+            red_used_ids = [s.id for s in red_top if s.id is not None]
+            blue_used_ids = [s.id for s in blue_top if s.id is not None]
 
             try:
                 result = await round_engine.play(
@@ -132,8 +134,10 @@ class GameEngine:
                 red_strats = await extract_strategies(result, "red", self._judge_client)
                 blue_strats = await extract_strategies(result, "blue", self._judge_client)
                 await save_strategies(red_strats + blue_strats, self.db)
-                await update_win_rates("red", self._current_phase.value, won_red, self.db)
-                await update_win_rates("blue", self._current_phase.value, not won_red, self.db)
+                await update_win_rates(strategy_ids=red_used_ids, round_won=won_red, db=self.db)
+                await update_win_rates(strategy_ids=blue_used_ids, round_won=not won_red, db=self.db)
+                await prune_strategies("red", self._current_phase.value, self.db)
+                await prune_strategies("blue", self._current_phase.value, self.db)
             except Exception as exc:
                 logger.warning("Strategy extraction failed for round %d: %s", round_num, exc)
 

@@ -92,7 +92,8 @@ CREATE TABLE IF NOT EXISTS strategies (
     content        TEXT,
     win_rate       REAL DEFAULT 0.0,
     usage_count    INTEGER DEFAULT 0,
-    created_round  INTEGER
+    created_round  INTEGER,
+    active         INTEGER DEFAULT 1
 )
 """
 
