@@ -445,3 +445,71 @@ async def test_time_decay_without_round_falls_back(tmp_path: Path):
     loaded = await get_top_strategies(team="red", phase=1, db=db)
     assert loaded[0].content == "Higher rate"
     await db.close()
+
+
+@pytest.mark.asyncio
+async def test_evolution_full_cycle(tmp_path: Path):
+    """Simulate a 3-round evolution cycle: extract, save, select, update, prune."""
+    db = Database(tmp_path / "test.db")
+    await db.init()
+
+    # Round 1: cold start — no strategies
+    r1_top = await get_top_strategies("red", 1, db, current_round=1)
+    assert len(r1_top) == 0
+
+    # Simulate: round 1 extracts 3 strategies
+    r1_strats = [
+        Strategy(team="red", phase=1, strategy_type="attack", content="SQL injection via login form", created_round=1),
+        Strategy(team="red", phase=1, strategy_type="attack", content="XSS in comment field", created_round=1),
+        Strategy(team="red", phase=1, strategy_type="defense", content="Input validation on all fields", created_round=1),
+    ]
+    await save_strategies(r1_strats, db)
+
+    # Round 2: load strategies, use them
+    r2_top = await get_top_strategies("red", 1, db, current_round=2)
+    assert len(r2_top) == 3
+    r2_used_ids = [s.id for s in r2_top if s.id]
+
+    # Red lost round 2
+    await update_win_rates(strategy_ids=r2_used_ids, round_won=False, db=db)
+
+    # Check: all used strategies now have usage=1, win_rate=0.0
+    after_r2 = await get_top_strategies("red", 1, db, current_round=2)
+    for s in after_r2:
+        assert s.usage_count == 1
+        assert s.win_rate == pytest.approx(0.0)
+
+    # Round 2 also extracts 2 new strategies
+    r2_new = [
+        Strategy(team="red", phase=1, strategy_type="attack", content="Phishing with crafted email", created_round=2),
+        Strategy(team="red", phase=1, strategy_type="attack", content="SQL injection via login form and API", created_round=2),
+        # ^ this should be deduped against "SQL injection via login form"
+    ]
+    await save_strategies(r2_new, db)
+
+    all_active = await get_top_strategies("red", 1, db, current_round=2, limit=20)
+    contents = [s.content for s in all_active]
+    assert "Phishing with crafted email" in contents
+    # The near-duplicate should NOT be saved
+    assert "SQL injection via login form and API" not in contents
+
+    # Round 3: use top 5, win
+    r3_top = await get_top_strategies("red", 1, db, current_round=3)
+    r3_used_ids = [s.id for s in r3_top if s.id]
+    await update_win_rates(strategy_ids=r3_used_ids, round_won=True, db=db)
+
+    # After 2 uses (1 loss, 1 win) the round-1 strategies should have win_rate ≈ 0.5
+    r1_reloaded = await get_top_strategies("red", 1, db, current_round=3, limit=20)
+    sql_strat = next(s for s in r1_reloaded if "SQL injection" in s.content)
+    assert sql_strat.usage_count == 2
+    assert sql_strat.win_rate == pytest.approx(0.5)
+
+    # The phishing strat (round 2, 1 use, 1 win) should have win_rate=1.0
+    phishing = next(s for s in r1_reloaded if "Phishing" in s.content)
+    assert phishing.usage_count == 1
+    assert phishing.win_rate == pytest.approx(1.0)
+
+    # With time decay at round 3: phishing (round 2, wr=1.0) should outrank SQL (round 1, wr=0.5)
+    assert r3_top[0].content != "SQL injection via login form" or r3_top[0].win_rate >= 0.5
+
+    await db.close()
