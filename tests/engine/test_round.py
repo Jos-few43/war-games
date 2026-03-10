@@ -291,3 +291,69 @@ async def test_fog_summary_passed_to_blue_defend():
     defend_call = mock_blue.defend.call_args
     assert defend_call.args[0] == fog
     assert defend_call.args[0] != "Detailed SQLi using UNION SELECT on /api/users"
+
+
+from wargames.models import ScoringProfile, DefenseRewards
+
+
+@pytest.mark.asyncio
+async def test_round_uses_custom_scoring_profile():
+    """RoundEngine with custom profile uses profile thresholds, not hardcoded."""
+    mock_red, mock_blue, mock_judge = AsyncMock(), AsyncMock(), AsyncMock()
+    mock_draft_engine, mock_db = AsyncMock(), AsyncMock()
+    _setup_draft(mock_draft_engine)
+    _setup_bug_patch(mock_red, mock_blue)
+
+    mock_red.attack.return_value = "Attack"
+    mock_judge.evaluate_attack.return_value = (AttackResult(
+        turn=0, description="", success=True, severity=Severity.MEDIUM, points=3, auto_win=False,
+    ), "An attack was attempted.")
+    # Effectiveness 0.5 — under default full_block (0.7) but above partial (0.3)
+    # With custom profile: full_block_threshold=0.4, so 0.5 should be a full block
+    mock_judge.evaluate_defense.return_value = (True, 0.5, "Good defense")
+    mock_blue.defend.return_value = "Defense"
+    mock_red.write_debrief.return_value = "Red"
+    mock_blue.write_debrief.return_value = "Blue"
+
+    custom_profile = ScoringProfile(
+        defense_rewards=DefenseRewards(
+            full_block_threshold=0.4,
+            full_block_points=5,
+        ),
+    )
+    engine = _make_engine(mock_red, mock_blue, mock_judge, mock_draft_engine, mock_db,
+                          turn_limit=1, score_threshold=100)
+    engine.scoring = custom_profile
+    result = await engine.play(round_number=1, phase=Phase.PROMPT_INJECTION)
+
+    # With custom profile: 0.5 >= 0.4 threshold → full block → 5 points
+    assert result.blue_score == 5
+    assert result.defenses[0].points_earned == 5
+
+
+@pytest.mark.asyncio
+async def test_round_custom_critical_neutralize():
+    """Custom critical_neutralize_points applied correctly."""
+    mock_red, mock_blue, mock_judge = AsyncMock(), AsyncMock(), AsyncMock()
+    mock_draft_engine, mock_db = AsyncMock(), AsyncMock()
+    _setup_draft(mock_draft_engine, red_picks=[], blue_picks=[])
+    _setup_bug_patch(mock_red, mock_blue)
+
+    mock_red.attack.return_value = "Exploit"
+    mock_judge.evaluate_attack.return_value = (AttackResult(
+        turn=0, description="", success=True, severity=Severity.CRITICAL, points=8, auto_win=True,
+    ), "Critical attack.")
+    mock_blue.defend.return_value = "Strong containment"
+    mock_judge.evaluate_defense.return_value = (True, 0.7, "Contained")
+    mock_red.write_debrief.return_value = "Red"
+    mock_blue.write_debrief.return_value = "Blue"
+
+    custom_profile = ScoringProfile(
+        defense_rewards=DefenseRewards(critical_neutralize_points=10),
+    )
+    engine = _make_engine(mock_red, mock_blue, mock_judge, mock_draft_engine, mock_db,
+                          turn_limit=1, score_threshold=100)
+    engine.scoring = custom_profile
+    result = await engine.play(round_number=1, phase=Phase.PROMPT_INJECTION)
+
+    assert result.blue_score == 10

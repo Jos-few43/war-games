@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from wargames.models import (
     RoundResult, Phase, MatchOutcome, AttackResult, DefenseResult, DraftPick,
-    BugReport, Patch,
+    BugReport, Patch, ScoringProfile,
 )
 
 
 class RoundEngine:
-    def __init__(self, red, blue, judge, draft_engine, db, turn_limit: int, score_threshold: int):
+    def __init__(self, red, blue, judge, draft_engine, db, turn_limit: int, score_threshold: int,
+                 scoring: ScoringProfile | None = None):
         """
         red: RedTeamAgent
         blue: BlueTeamAgent
@@ -16,6 +17,7 @@ class RoundEngine:
         db: Database (or mock)
         turn_limit: max turns per match
         score_threshold: red score needed to win
+        scoring: ScoringProfile controlling thresholds and point values (defaults to standard profile)
         """
         self.red = red
         self.blue = blue
@@ -24,6 +26,7 @@ class RoundEngine:
         self.db = db
         self.turn_limit = turn_limit
         self.score_threshold = score_threshold
+        self.scoring = scoring or ScoringProfile()
         self._on_event = None  # Optional callback for TUI events
 
     def on_event(self, callback):
@@ -121,13 +124,13 @@ class RoundEngine:
                     attack_severity=attack_severity,
                 )
 
-                if effectiveness >= 0.5:
+                if effectiveness >= self.scoring.defense_rewards.critical_neutralize_threshold:
                     # Blue neutralizes the critical attack
-                    blue_score += 5
+                    blue_score += self.scoring.defense_rewards.critical_neutralize_points
                     defenses.append(DefenseResult(
                         turn=turn, description=defense_desc,
                         blocked=True, effectiveness=effectiveness,
-                        points_earned=5, points_deducted=0,
+                        points_earned=self.scoring.defense_rewards.critical_neutralize_points, points_deducted=0,
                     ))
                     self._emit("defense", {"turn": turn, "blocked": True,
                                            "critical_neutralized": True,
@@ -158,13 +161,13 @@ class RoundEngine:
             # Graded scoring based on effectiveness (no red erosion)
             points_deducted = 0
             points_earned = 0
-            if effectiveness >= 0.7:
+            if effectiveness >= self.scoring.defense_rewards.full_block_threshold:
                 # Full block
-                points_earned = 2
+                points_earned = self.scoring.defense_rewards.full_block_points
                 blue_score += points_earned
-            elif effectiveness >= 0.3:
+            elif effectiveness >= self.scoring.defense_rewards.partial_block_threshold:
                 # Partial mitigation
-                points_earned = 1
+                points_earned = self.scoring.defense_rewards.partial_block_points
                 blue_score += points_earned
 
             defenses.append(DefenseResult(
