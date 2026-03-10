@@ -197,7 +197,17 @@ class Database:
         self._conn.row_factory = aiosqlite.Row
         for ddl in ALL_TABLES:
             await self._conn.execute(ddl)
+        await self._migrate()
         await self._conn.commit()
+
+    async def _migrate(self) -> None:
+        """Add columns that may be missing from older databases."""
+        cursor = await self._conn.execute("PRAGMA table_info(strategies)")
+        columns = {row[1] for row in await cursor.fetchall()}
+        if "active" not in columns:
+            await self._conn.execute(
+                "ALTER TABLE strategies ADD COLUMN active INTEGER DEFAULT 1"
+            )
 
     async def close(self) -> None:
         if self._conn is not None:
