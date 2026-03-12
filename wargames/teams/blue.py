@@ -51,6 +51,8 @@ class BlueTeamAgent:
         )
         try:
             data = json.loads(response)
+            if isinstance(data, list):
+                data = data[0] if data else {}
             return Patch(
                 round_number=0,
                 title=data.get("title", "Untitled Patch"),

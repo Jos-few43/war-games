@@ -45,6 +45,8 @@ class RedTeamAgent:
         )
         try:
             data = json.loads(response)
+            if isinstance(data, list):
+                data = data[0] if data else {}
             return BugReport(
                 round_number=0,
                 title=data.get("title", "Untitled"),
