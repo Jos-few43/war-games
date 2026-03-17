@@ -7,3 +7,7 @@ build/
 .pytest_cache/
 .env
 .worktrees/
+.claude/
+*.pid
+*.db
+state.db

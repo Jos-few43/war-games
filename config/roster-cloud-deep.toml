@@ -1,0 +1,40 @@
+# Deep tournament roster — 4 models, 3 Swiss rounds, 2 games/match with role swap
+# Gives 12 games total (6 matches × 2 games), 36 game-rounds
+# Estimated: ~45 min, ~$0.30-0.50
+# Usage: wargames tournament --roster config/roster-cloud-deep.toml
+
+[tournament]
+name = "deep-showdown-01"
+rounds = 3           # 3 Swiss rounds for better separation
+games_per_match = 2  # role swap — each model plays Red and Blue
+game_rounds = 3      # 3 rounds per game for more data
+turn_limit = 4
+score_threshold = 10
+
+[[models]]
+name = "llama-3.1-70b"
+endpoint = "https://openrouter.ai/api/v1"
+model_name = "meta-llama/llama-3.1-70b-instruct"
+api_key = "$OPENROUTER_API_KEY"
+timeout = 120.0
+
+[[models]]
+name = "gemini-flash"
+endpoint = "https://openrouter.ai/api/v1"
+model_name = "google/gemini-2.0-flash-001"
+api_key = "$OPENROUTER_API_KEY"
+timeout = 120.0
+
+[[models]]
+name = "qwen-2.5-72b"
+endpoint = "https://openrouter.ai/api/v1"
+model_name = "qwen/qwen-2.5-72b-instruct"
+api_key = "$OPENROUTER_API_KEY"
+timeout = 120.0
+
+[[models]]
+name = "mistral-large"
+endpoint = "https://openrouter.ai/api/v1"
+model_name = "mistralai/mistral-large-2411"
+api_key = "$OPENROUTER_API_KEY"
+timeout = 120.0
