@@ -57,9 +57,7 @@ def swiss_pair(
 
     Returns a list of (player_a, player_b) tuples.
     """
-    sorted_players = sorted(
-        standings, key=lambda e: (e.wins, e.rating), reverse=True
-    )
+    sorted_players = sorted(standings, key=lambda e: (e.wins, e.rating), reverse=True)
 
     groups: list[list[StandingsEntry]] = []
     for _, group_iter in groupby(sorted_players, key=lambda e: e.wins):
@@ -94,18 +92,14 @@ def swiss_pair(
                 paired_in_group.add(partner.name)
 
         # Any remaining unpaired from bottom half try to pair among themselves.
-        unpaired_bottom = [
-            p for p in bottom_half if p.name not in paired_in_group
-        ]
+        unpaired_bottom = [p for p in bottom_half if p.name not in paired_in_group]
         i = 0
         while i < len(unpaired_bottom) - 1:
             a = unpaired_bottom[i]
             if a.name in paired_in_group:
                 i += 1
                 continue
-            partner = _find_partner(
-                a, unpaired_bottom[i + 1 :], paired_in_group
-            )
+            partner = _find_partner(a, unpaired_bottom[i + 1 :], paired_in_group)
             if partner is not None:
                 group_pairs.append((a, partner))
                 paired_in_group.add(a.name)
@@ -147,6 +141,8 @@ logger = logging.getLogger(__name__)
 class TournamentRunner:
     """Runs a Swiss-system tournament using SandboxRunner for individual games."""
 
+    MAX_TOKENS_PER_GAME = 50000
+
     def __init__(self, config: TournamentConfig, db=None):
         self.config = config
         self.db = db
@@ -162,15 +158,18 @@ class TournamentRunner:
         for m in self.config.models:
             if m.name == name:
                 return m
-        raise ValueError(f"Model {name!r} not found in roster")
+        raise ValueError(f'Model {name!r} not found in roster')
 
     def _build_game_config(
-        self, red: ModelEntry, blue: ModelEntry, judge: ModelEntry,
+        self,
+        red: ModelEntry,
+        blue: ModelEntry,
+        judge: ModelEntry,
     ) -> GameConfig:
         """Build a GameConfig for a single game between two models."""
         return GameConfig(
             game=GameSettings(
-                name=f"{red.name}-vs-{blue.name}",
+                name=f'{red.name}-vs-{blue.name}',
                 rounds=self.config.game_rounds,
                 turn_limit=self.config.turn_limit,
                 score_threshold=self.config.score_threshold,
@@ -195,7 +194,7 @@ class TournamentRunner:
                     api_key=blue.api_key,
                 ),
                 judge=TeamSettings(
-                    name="judge",
+                    name='judge',
                     model=judge.endpoint,
                     model_name=judge.model_name,
                     temperature=0.2,
@@ -206,7 +205,9 @@ class TournamentRunner:
         )
 
     async def _play_game(
-        self, red: ModelEntry, blue: ModelEntry,
+        self,
+        red: ModelEntry,
+        blue: ModelEntry,
     ) -> tuple[int, int, str]:
         """Play a single game. Returns (red_score, blue_score, outcome)."""
         from wargames.engine.sandbox import SandboxRunner
@@ -220,12 +221,28 @@ class TournamentRunner:
 
         config = self._build_game_config(red, blue, judge)
         runner = SandboxRunner(config)
-        result = await runner.run()
 
-        return result.red_score, result.blue_score, result.outcome.value
+        total_tokens = 0
+        game_outcome = 'draw'
+        red_score = 0
+        blue_score = 0
+
+        try:
+            result = await runner.run()
+            red_score = result.red_score
+            blue_score = result.blue_score
+            game_outcome = result.outcome.value
+        except Exception as e:
+            logger.warning(f'Game failed: {e}')
+            game_outcome = 'error'
+
+        return red_score, blue_score, game_outcome
 
     async def _play_match(
-        self, p1: StandingsEntry, p2: StandingsEntry, swiss_round: int,
+        self,
+        p1: StandingsEntry,
+        p2: StandingsEntry,
+        swiss_round: int,
     ) -> str:
         """Play a match (N games with role swaps). Returns 'p1', 'p2', or 'draw'."""
         m1 = self._model_by_name(p1.name)
@@ -244,8 +261,12 @@ class TournamentRunner:
 
             red_score, blue_score, outcome = await self._play_game(red, blue)
             logger.info(
-                "  %s (Red) vs %s (Blue) -> %s (%d-%d)",
-                red_name, blue_name, outcome, red_score, blue_score,
+                '  %s (Red) vs %s (Blue) -> %s (%d-%d)',
+                red_name,
+                blue_name,
+                outcome,
+                red_score,
+                blue_score,
             )
 
             if self.db:
@@ -259,8 +280,8 @@ class TournamentRunner:
                     outcome=outcome,
                 )
 
-            won_red = outcome in ("red_win", "red_auto_win", "red_critical_win")
-            won_blue = outcome in ("blue_win", "blue_decisive_win")
+            won_red = outcome in ('red_win', 'red_auto_win', 'red_critical_win')
+            won_blue = outcome in ('blue_win', 'blue_decisive_win')
             if won_red:
                 if red_name == p1.name:
                     p1_game_wins += 1
@@ -274,15 +295,15 @@ class TournamentRunner:
             # else: timeout — no game win awarded
 
         if p1_game_wins > p2_game_wins:
-            return "p1"
+            return 'p1'
         elif p2_game_wins > p1_game_wins:
-            return "p2"
-        return "draw"
+            return 'p2'
+        return 'draw'
 
     async def run(self) -> list[StandingsEntry]:
         """Run the full tournament. Returns final standings sorted by rating."""
         for swiss_round in range(1, self.config.rounds + 1):
-            logger.info("Swiss Round %d/%d", swiss_round, self.config.rounds)
+            logger.info('Swiss Round %d/%d', swiss_round, self.config.rounds)
 
             standings_list = sorted(
                 self.standings.values(),
@@ -291,17 +312,17 @@ class TournamentRunner:
             pairs = swiss_pair(standings_list)
 
             for p1, p2 in pairs:
-                logger.info("Match: %s vs %s", p1.name, p2.name)
+                logger.info('Match: %s vs %s', p1.name, p2.name)
                 match_result = await self._play_match(p1, p2, swiss_round)
 
                 p1.played_against.add(p2.name)
                 p2.played_against.add(p1.name)
 
-                if match_result == "p1":
+                if match_result == 'p1':
                     p1.wins += 1
                     p2.losses += 1
                     new_p1_r, new_p2_r = calculate_elo(p1.rating, p2.rating)
-                elif match_result == "p2":
+                elif match_result == 'p2':
                     p2.wins += 1
                     p1.losses += 1
                     new_p2_r, new_p1_r = calculate_elo(p2.rating, p1.rating)
@@ -309,7 +330,9 @@ class TournamentRunner:
                     p1.draws += 1
                     p2.draws += 1
                     new_p1_r, new_p2_r = calculate_elo(
-                        p1.rating, p2.rating, draw=True,
+                        p1.rating,
+                        p2.rating,
+                        draw=True,
                     )
 
                 p1.rating = new_p1_r
@@ -317,16 +340,26 @@ class TournamentRunner:
 
                 if self.db:
                     await self.db.save_model_rating(
-                        p1.name, p1.rating, p1.wins, p1.losses, p1.draws,
+                        p1.name,
+                        p1.rating,
+                        p1.wins,
+                        p1.losses,
+                        p1.draws,
                     )
                     await self.db.save_model_rating(
-                        p2.name, p2.rating, p2.wins, p2.losses, p2.draws,
+                        p2.name,
+                        p2.rating,
+                        p2.wins,
+                        p2.losses,
+                        p2.draws,
                     )
 
                 logger.info(
-                    "  Result: %s (ELO: %.0f) vs %s (ELO: %.0f)",
-                    p1.name, p1.rating,
-                    p2.name, p2.rating,
+                    '  Result: %s (ELO: %.0f) vs %s (ELO: %.0f)',
+                    p1.name,
+                    p1.rating,
+                    p2.name,
+                    p2.rating,
                 )
 
         return sorted(self.standings.values(), key=lambda s: (-s.points, -s.rating))

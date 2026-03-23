@@ -1,4 +1,3 @@
-# Cloud tournament roster using LiteLLM green (port 4002) with diverse models
 # Usage: wargames tournament --roster config/roster-cloud.toml
 
 [tournament]
@@ -18,6 +17,6 @@ endpoint = "http://127.0.0.1:4002/v1"
 model_name = "gemini-flash"
 
 [[models]]
-name = "gemini-2-flash"
+name = "llama-3-70b"
 endpoint = "http://127.0.0.1:4002/v1"
-model_name = "gemini-2-flash"
+model_name = "llama-3-70b"
