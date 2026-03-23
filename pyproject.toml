@@ -12,7 +12,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.24.0", "pytest-timeout>=2.3.0"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24.0", "pytest-timeout>=2.3.0", "ruff>=0.4.0", "mypy>=1.10.0", "sphinx>=7.0", "sphinx-furo>=1.1", "myst-parser>=3.0"]
+test = ["pytest-cov>=4.1.0"]
+lint = ["ruff>=0.4.0"]
+typecheck = ["mypy>=1.10.0"]
+docs = ["sphinx>=7.0", "sphinx-furo>=1.1", "myst-parser>=3.0"]
+crewai = ["crewai>=0.1.0", "crewai-tools"]
+memory = ["qdrant-client>=1.7.0", "sentence-transformers>=2.3.0"]
 
 [project.scripts]
 wargames = "wargames.cli:main"
@@ -23,7 +29,52 @@ include = ["wargames*"]
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 timeout = 10
+addopts = "--strict-markers --tb=short"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["wargames"]
+branch = true
+parallel = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
 
 [build-system]
 requires = ["setuptools>=75.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.pre-commit]
+default_stages = ["pre-commit"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "FA"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true

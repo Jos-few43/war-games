@@ -1,3 +1,10 @@
+"""Game engine module for War Games competition framework.
+
+This module contains the main GameEngine class that orchestrates a complete
+season of red team vs blue team LLM competitions. Handles phase progression,
+strategy evolution, ELO ratings, and database persistence.
+"""
+
 import asyncio
 import logging
 import uuid
@@ -12,14 +19,37 @@ from wargames.teams.blue import BlueTeamAgent
 from wargames.engine.judge import Judge
 from wargames.engine.draft import DraftEngine
 from wargames.engine.round import RoundEngine
-from wargames.engine.strategy import extract_strategies, save_strategies, get_top_strategies, update_win_rates, prune_strategies
+from wargames.engine.strategy import (
+    extract_strategies,
+    save_strategies,
+    get_top_strategies,
+    update_win_rates,
+    prune_strategies,
+)
 from wargames.engine.elo import calculate_elo
 
 logger = logging.getLogger(__name__)
 
 
 class GameEngine:
+    """Orchestrates a complete season of red team vs blue team competitions.
+
+    The GameEngine manages the full game lifecycle including initialization,
+    round execution, phase advancement, strategy evolution, ELO rating updates,
+    and cleanup. It yields results asynchronously for real-time TUI updates.
+
+    Attributes:
+        config: Game configuration containing rounds, scoring, and team settings.
+        db: Database instance for persisting game state.
+    """
+
     def __init__(self, config: GameConfig):
+        """Initialize the game engine with configuration.
+
+        Args:
+            config: GameConfig containing all game settings including teams,
+                scoring profiles, phase advancement thresholds, and output paths.
+        """
         self.config = config
         self.db: Database | None = None
         self._red_client: LLMClient | None = None
@@ -32,14 +62,27 @@ class GameEngine:
         self._current_phase = Phase.PROMPT_INJECTION
         self._current_round = 0
         self._on_event = None
-        self._season_id: str = ""
+        self._season_id: str = ''
 
     def on_event(self, callback):
-        """Set event callback for live updates."""
+        """Set event callback for live TUI updates.
+
+        Args:
+            callback: Callable accepting (event_type: str, data: dict) for
+                broadcasting events like round completion, attacks, and defenses.
+        """
         self._on_event = callback
 
     async def init(self):
-        """Initialize database and LLM clients."""
+        """Initialize database and LLM clients.
+
+        Creates the database directory if needed, initializes the SQLite
+        database, generates a season ID, and creates LLM clients for each team.
+
+        Raises:
+            OSError: If database directory creation fails.
+            aiosqlite.Error: If database initialization fails.
+        """
         db_path = Path(self.config.output.database.path).expanduser()
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db = Database(db_path)
@@ -59,7 +102,20 @@ class GameEngine:
         self._judge_client = LLMClient(self.config.teams.judge)
 
     async def run(self) -> AsyncGenerator[RoundResult, None]:
-        """Run the season, yielding results round by round."""
+        """Run the complete season, yielding results round by round.
+
+        Executes rounds sequentially, handling draft, combat, debrief, strategy
+        extraction, ELO updates, and phase advancement. Yields after each round
+        for real-time TUI updates.
+
+        Yields:
+            RoundResult: Complete result of each round including scores,
+                attacks, defenses, debriefs, and outcome.
+
+        Raises:
+            Exception: Round failures are logged and skipped; does not stop
+                the season unless stop() is called.
+        """
         red_agent = RedTeamAgent(self._red_client)
         blue_agent = BlueTeamAgent(self._blue_client)
         judge = Judge(self._judge_client)
@@ -81,8 +137,11 @@ class GameEngine:
             self._current_round = round_num
 
             round_engine = RoundEngine(
-                red=red_agent, blue=blue_agent, judge=judge,
-                draft_engine=draft_engine, db=self.db,
+                red=red_agent,
+                blue=blue_agent,
+                judge=judge,
+                draft_engine=draft_engine,
+                db=self.db,
                 turn_limit=self.config.game.turn_limit,
                 score_threshold=self.config.game.score_threshold,
                 scoring=self.config.scoring,
@@ -92,8 +151,12 @@ class GameEngine:
                 round_engine.on_event(self._on_event)
 
             # Load top strategies for current phase before each round
-            red_top = await get_top_strategies("red", self._current_phase.value, self.db, current_round=round_num)
-            blue_top = await get_top_strategies("blue", self._current_phase.value, self.db, current_round=round_num)
+            red_top = await get_top_strategies(
+                'red', self._current_phase.value, self.db, current_round=round_num
+            )
+            blue_top = await get_top_strategies(
+                'blue', self._current_phase.value, self.db, current_round=round_num
+            )
             red_strat_texts = [s.content for s in red_top]
             blue_strat_texts = [s.content for s in blue_top]
             red_used_ids = [s.id for s in red_top if s.id is not None]
@@ -111,11 +174,15 @@ class GameEngine:
                     blue_settings=self.config.teams.blue,
                 )
             except Exception as exc:
-                logger.error("Round %d failed: %s — skipping to next round", round_num, exc)
+                logger.error('Round %d failed: %s — skipping to next round', round_num, exc)
                 if self._on_event:
-                    self._on_event("round_error", {
-                        "round": round_num, "error": str(exc),
-                    })
+                    self._on_event(
+                        'round_error',
+                        {
+                            'round': round_num,
+                            'error': str(exc),
+                        },
+                    )
                 continue
 
             # Track scores for phase advancement
@@ -127,19 +194,25 @@ class GameEngine:
             if result.blue_debrief:
                 red_lessons.append(result.blue_debrief[:500])
 
-            won_red = result.outcome in (MatchOutcome.RED_WIN, MatchOutcome.RED_AUTO_WIN, MatchOutcome.RED_CRITICAL_WIN)
+            won_red = result.outcome in (
+                MatchOutcome.RED_WIN,
+                MatchOutcome.RED_AUTO_WIN,
+                MatchOutcome.RED_CRITICAL_WIN,
+            )
 
             # Extract and save strategies, then update win rates
             try:
-                red_strats = await extract_strategies(result, "red", self._judge_client)
-                blue_strats = await extract_strategies(result, "blue", self._judge_client)
+                red_strats = await extract_strategies(result, 'red', self._judge_client)
+                blue_strats = await extract_strategies(result, 'blue', self._judge_client)
                 await save_strategies(red_strats + blue_strats, self.db)
                 await update_win_rates(strategy_ids=red_used_ids, round_won=won_red, db=self.db)
-                await update_win_rates(strategy_ids=blue_used_ids, round_won=not won_red, db=self.db)
-                await prune_strategies("red", self._current_phase.value, self.db)
-                await prune_strategies("blue", self._current_phase.value, self.db)
+                await update_win_rates(
+                    strategy_ids=blue_used_ids, round_won=not won_red, db=self.db
+                )
+                await prune_strategies('red', self._current_phase.value, self.db)
+                await prune_strategies('blue', self._current_phase.value, self.db)
             except Exception as exc:
-                logger.warning("Strategy extraction failed for round %d: %s", round_num, exc)
+                logger.warning('Strategy extraction failed for round %d: %s', round_num, exc)
 
             # Update ELO ratings for both models
             try:
@@ -149,19 +222,21 @@ class GameEngine:
                 red_row = await self.db.get_model_rating(red_model)
                 blue_row = await self.db.get_model_rating(blue_model)
 
-                red_rating = red_row["rating"] if red_row else 1500.0
-                blue_rating = blue_row["rating"] if blue_row else 1500.0
-                red_wins = red_row["wins"] if red_row else 0
-                red_losses = red_row["losses"] if red_row else 0
-                red_draws = red_row["draws"] if red_row else 0
-                blue_wins = blue_row["wins"] if blue_row else 0
-                blue_losses = blue_row["losses"] if blue_row else 0
-                blue_draws = blue_row["draws"] if blue_row else 0
+                red_rating = red_row['rating'] if red_row else 1500.0
+                blue_rating = blue_row['rating'] if blue_row else 1500.0
+                red_wins = red_row['wins'] if red_row else 0
+                red_losses = red_row['losses'] if red_row else 0
+                red_draws = red_row['draws'] if red_row else 0
+                blue_wins = blue_row['wins'] if blue_row else 0
+                blue_losses = blue_row['losses'] if blue_row else 0
+                blue_draws = blue_row['draws'] if blue_row else 0
 
                 is_draw = result.outcome == MatchOutcome.TIMEOUT
 
                 if is_draw:
-                    new_red_rating, new_blue_rating = calculate_elo(red_rating, blue_rating, draw=True)
+                    new_red_rating, new_blue_rating = calculate_elo(
+                        red_rating, blue_rating, draw=True
+                    )
                     red_draws += 1
                     blue_draws += 1
                 elif won_red:
@@ -173,30 +248,38 @@ class GameEngine:
                     blue_wins += 1
                     red_losses += 1
 
-                await self.db.save_model_rating(red_model, new_red_rating, red_wins, red_losses, red_draws)
-                await self.db.save_model_rating(blue_model, new_blue_rating, blue_wins, blue_losses, blue_draws)
+                await self.db.save_model_rating(
+                    red_model, new_red_rating, red_wins, red_losses, red_draws
+                )
+                await self.db.save_model_rating(
+                    blue_model, new_blue_rating, blue_wins, blue_losses, blue_draws
+                )
             except Exception as exc:
-                logger.warning("ELO update failed for round %d: %s", round_num, exc)
+                logger.warning('ELO update failed for round %d: %s', round_num, exc)
 
             # Save token usage
             try:
                 costs = self.config.costs.rates if self.config.costs else {}
-                for team_name, client in [("red", self._red_client), ("blue", self._blue_client), ("judge", self._judge_client)]:
+                for team_name, client in [
+                    ('red', self._red_client),
+                    ('blue', self._blue_client),
+                    ('judge', self._judge_client),
+                ]:
                     usage = client.get_usage(reset=True)
-                    model = usage["model_used"]
+                    model = usage['model_used']
                     rate = costs.get(model, 0.0)
-                    total_tokens = usage["prompt_tokens"] + usage["completion_tokens"]
+                    total_tokens = usage['prompt_tokens'] + usage['completion_tokens']
                     cost = (total_tokens / 1000.0) * rate
                     await self.db.save_token_usage(
                         round_number=round_num,
                         team=team_name,
-                        prompt_tokens=usage["prompt_tokens"],
-                        completion_tokens=usage["completion_tokens"],
+                        prompt_tokens=usage['prompt_tokens'],
+                        completion_tokens=usage['completion_tokens'],
                         model_used=model,
                         cost=cost,
                     )
             except Exception as exc:
-                logger.warning("Token usage tracking failed for round %d: %s", round_num, exc)
+                logger.warning('Token usage tracking failed for round %d: %s', round_num, exc)
 
             # Check phase advancement
             new_phase = self._check_phase_advance(self._current_phase)
@@ -206,7 +289,15 @@ class GameEngine:
             yield result
 
     def _check_phase_advance(self, current_phase: Phase) -> Phase:
-        """Check if average scores warrant advancing to next phase."""
+        """Check if average scores warrant advancing to next phase.
+
+        Args:
+            current_phase: The current game phase.
+
+        Returns:
+            The next phase if advancement threshold is met, otherwise
+            the current phase.
+        """
         min_rounds = self.config.scoring.phase_advance.min_rounds
         min_avg = self.config.scoring.phase_advance.min_avg_score
         if len(self._round_scores) < min_rounds:
@@ -214,24 +305,49 @@ class GameEngine:
 
         recent_avg = sum(self._round_scores[-min_rounds:]) / min_rounds
         if recent_avg >= min_avg:
-            phase_order = [Phase.PROMPT_INJECTION, Phase.CODE_VULNS, Phase.REAL_CVES, Phase.OPEN_ENDED]
+            phase_order = [
+                Phase.PROMPT_INJECTION,
+                Phase.CODE_VULNS,
+                Phase.REAL_CVES,
+                Phase.OPEN_ENDED,
+            ]
             current_idx = phase_order.index(current_phase)
             if current_idx < len(phase_order) - 1:
                 return phase_order[current_idx + 1]
         return current_phase
 
     def pause(self):
+        """Pause the game loop.
+
+        Blocks the run() generator until resume() is called.
+        """
         self._pause_event.clear()
 
     def resume(self):
+        """Resume a paused game loop.
+
+        Unblocks the run() generator to continue round execution.
+        """
         self._pause_event.set()
 
     def stop(self):
+        """Stop the game loop completely.
+
+        Signals the run() generator to exit after the current round.
+        Also unblocks if currently paused.
+        """
         self._stop = True
         self._pause_event.set()  # Unblock if paused
 
     async def cleanup(self):
-        """Close all resources."""
+        """Close all resources and finalize the season.
+
+        Closes LLM clients and database connection. Records final season
+        statistics including winner determination.
+
+        Raises:
+            Exception: Logs warning if season finalization fails.
+        """
         if self._red_client:
             await self._red_client.close()
         if self._blue_client:
@@ -241,12 +357,12 @@ class GameEngine:
         if self.db and self._season_id:
             try:
                 stats = await self.db.get_season_stats()
-                if stats["red_wins"] > stats["blue_wins"]:
+                if stats['red_wins'] > stats['blue_wins']:
                     winner = self.config.teams.red.model_name
-                elif stats["blue_wins"] > stats["red_wins"]:
+                elif stats['blue_wins'] > stats['red_wins']:
                     winner = self.config.teams.blue.model_name
                 else:
-                    winner = "draw"
+                    winner = 'draw'
                 ended_at = datetime.now(timezone.utc).isoformat()
                 await self.db.end_season(
                     season_id=self._season_id,
@@ -254,6 +370,6 @@ class GameEngine:
                     winner=winner,
                 )
             except Exception as exc:
-                logger.warning("Failed to finalize season %s: %s", self._season_id, exc)
+                logger.warning('Failed to finalize season %s: %s', self._season_id, exc)
         if self.db:
             await self.db.close()

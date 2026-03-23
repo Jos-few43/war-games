@@ -1,3 +1,9 @@
+"""Judge module for War Games competition framework.
+
+This module contains the Judge class that evaluates attack and defense
+submissions using an LLM to score severity, effectiveness, and completeness.
+"""
+
 from __future__ import annotations
 
 import json
@@ -59,7 +65,21 @@ completeness is 0.0-1.0: 0=useless, 0.5=partial, 1.0=complete fix."""
 
 
 class Judge:
+    """LLM-based judge for evaluating attacks and defenses in war games.
+
+    Uses structured prompts to score attack severity, defense effectiveness,
+    and patch completeness. Returns parsed results with reasoning.
+
+    Attributes:
+        llm: LLM client for generating evaluations.
+    """
+
     def __init__(self, llm) -> None:
+        """Initialize the judge with an LLM client.
+
+        Args:
+            llm: LLM client instance with a chat() method for completions.
+        """
         self.llm = llm
 
     async def evaluate_attack(
@@ -68,38 +88,52 @@ class Judge:
         target_description: str,
         available_tools: list[str],
     ) -> tuple[AttackResult, str]:
-        tools_str = ", ".join(available_tools) if available_tools else "none"
+        """Evaluate an attack attempt for validity and severity.
+
+        Args:
+            attack_description: The attack description submitted by red team.
+            target_description: Description of the target system.
+            available_tools: Tools available to the attacker.
+
+        Returns:
+            A tuple of (AttackResult, fog_summary) where AttackResult
+            contains success status, severity, points, and auto_win flag,
+            and fog_summary is a vague description for blue team's fog-of-war.
+        """
+        tools_str = ', '.join(available_tools) if available_tools else 'none'
         user_message = (
-            f"Attack description: {attack_description}\n"
-            f"Target description: {target_description}\n"
-            f"Available tools: {tools_str}\n\n"
-            "Evaluate whether this attack would succeed against this target. "
-            "Consider the available tools and the realism of the attack."
+            f'Attack description: {attack_description}\n'
+            f'Target description: {target_description}\n'
+            f'Available tools: {tools_str}\n\n'
+            'Evaluate whether this attack would succeed against this target. '
+            'Consider the available tools and the realism of the attack.'
         )
 
-        fallback_summary = attack_description[:100] + ("..." if len(attack_description) > 100 else "")
+        fallback_summary = attack_description[:100] + (
+            '...' if len(attack_description) > 100 else ''
+        )
 
         try:
             response = await self.llm.chat(
-                [{"role": "user", "content": user_message}],
+                [{'role': 'user', 'content': user_message}],
                 system=ATTACK_SYSTEM_PROMPT,
             )
             data = json.loads(response)
 
             severity: Severity | None = None
-            if data.get("severity"):
-                severity = Severity(data["severity"])
+            if data.get('severity'):
+                severity = Severity(data['severity'])
 
-            summary = data.get("summary") or fallback_summary
+            summary = data.get('summary') or fallback_summary
 
             return (
                 AttackResult(
                     turn=0,
                     description=attack_description,
-                    success=bool(data.get("valid", False)),
+                    success=bool(data.get('valid', False)),
                     severity=severity,
-                    points=int(data.get("points", 0)),
-                    auto_win=bool(data.get("auto_win", False)),
+                    points=int(data.get('points', 0)),
+                    auto_win=bool(data.get('auto_win', False)),
                 ),
                 summary,
             )
@@ -121,47 +155,72 @@ class Judge:
         attack_description: str,
         defense_description: str,
         available_tools: list[str],
-        attack_severity: str = "unknown",
+        attack_severity: str = 'unknown',
     ) -> tuple[bool, float, str]:
-        tools_str = ", ".join(available_tools) if available_tools else "none"
+        """Evaluate a defense against an attack.
+
+        Scores defense effectiveness relative to attack severity. Higher
+        severity attacks require more specific, layered defenses to score well.
+
+        Args:
+            attack_description: The attack being defended against.
+            defense_description: The defense submitted by blue team.
+            available_tools: Tools available to the defender.
+            attack_severity: Severity level of the attack (low/medium/high/critical).
+
+        Returns:
+            A tuple of (blocked, effectiveness, reasoning) where blocked
+            indicates if effectiveness >= 0.7, effectiveness is a score
+            from 0.0 to 1.0, and reasoning explains the evaluation.
+        """
+        tools_str = ', '.join(available_tools) if available_tools else 'none'
         user_message = (
-            f"Attack description: {attack_description}\n"
-            f"Attack severity: {attack_severity}\n"
-            f"Defense description: {defense_description}\n"
-            f"Available tools: {tools_str}\n\n"
-            "Evaluate how effectively this defense mitigated the attack. "
-            "Score relative to the attack severity — higher severity demands more specific, layered defenses."
+            f'Attack description: {attack_description}\n'
+            f'Attack severity: {attack_severity}\n'
+            f'Defense description: {defense_description}\n'
+            f'Available tools: {tools_str}\n\n'
+            'Evaluate how effectively this defense mitigated the attack. '
+            'Score relative to the attack severity — higher severity demands more specific, layered defenses.'
         )
 
         try:
             response = await self.llm.chat(
-                [{"role": "user", "content": user_message}],
+                [{'role': 'user', 'content': user_message}],
                 system=DEFENSE_SYSTEM_PROMPT,
             )
             data = json.loads(response)
-            effectiveness = float(data.get("effectiveness", 0.0))
+            effectiveness = float(data.get('effectiveness', 0.0))
             effectiveness = max(0.0, min(1.0, effectiveness))
             blocked = effectiveness >= 0.7
-            reasoning = str(data.get("reasoning", ""))
+            reasoning = str(data.get('reasoning', ''))
             return blocked, effectiveness, reasoning
         except (json.JSONDecodeError, KeyError, ValueError):
-            return False, 0.0, "Failed to parse judge response"
+            return False, 0.0, 'Failed to parse judge response'
 
     async def evaluate_patch(self, bug_report, patch) -> dict:
-        """Evaluate whether a patch adequately addresses a vulnerability."""
+        """Evaluate whether a patch adequately addresses a vulnerability.
+
+        Args:
+            bug_report: BugReport containing vulnerability details.
+            patch: Patch containing fix strategy and changes.
+
+        Returns:
+            Dict with 'addressed' (bool), 'completeness' (float 0.0-1.0),
+            and 'reasoning' (str) fields.
+        """
         user_message = (
-            f"Vulnerability: {bug_report.title} ({bug_report.severity.value})\n"
-            f"Steps to reproduce: {bug_report.steps_to_reproduce}\n"
-            f"Patch title: {patch.title}\n"
-            f"Patch strategy: {patch.strategy}\n"
-            f"Patch changes: {patch.changes}\n\n"
-            "Does this patch adequately address the vulnerability?"
+            f'Vulnerability: {bug_report.title} ({bug_report.severity.value})\n'
+            f'Steps to reproduce: {bug_report.steps_to_reproduce}\n'
+            f'Patch title: {patch.title}\n'
+            f'Patch strategy: {patch.strategy}\n'
+            f'Patch changes: {patch.changes}\n\n'
+            'Does this patch adequately address the vulnerability?'
         )
         try:
             response = await self.llm.chat(
-                [{"role": "user", "content": user_message}],
+                [{'role': 'user', 'content': user_message}],
                 system=PATCH_SYSTEM_PROMPT,
             )
             return json.loads(response)
         except (json.JSONDecodeError, Exception):
-            return {"addressed": False, "completeness": 0.0, "reasoning": "Parse error"}
+            return {'addressed': False, 'completeness': 0.0, 'reasoning': 'Parse error'}

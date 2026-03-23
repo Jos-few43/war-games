@@ -1,46 +1,44 @@
 [game]
-name = "season-01"
-rounds = 50
-turn_limit = 12
-score_threshold = 10
-phase_advance_score = 7.5
+name = "test-season"
+rounds = 10
+turn_limit = 6
+score_threshold = 8
+phase_advance_score = 5.0
 
 [draft]
-picks_per_team = 5
+picks_per_team = 3
 style = "snake"
 
 [teams.red]
 name = "Red Team"
-model = "http://localhost:4000/v1"
-model_name = "qwen3-8b"
+model = "http://localhost:11434/v1"
+model_name = "mistral-nemo:latest"
 temperature = 0.8
 timeout = 30.0
 
 [teams.blue]
 name = "Blue Team"
-model = "http://localhost:4000/v1"
-model_name = "llama3.2-3b"
+model = "http://localhost:11434/v1"
+model_name = "deepseek-coder:6.7b"
 temperature = 0.4
 timeout = 30.0
 
 [teams.judge]
 name = "Judge"
-model = "http://localhost:4002/v1"
-model_name = "claude-sonnet-4-5"
+model = "http://localhost:11434/v1"
+model_name = "mistral-nemo:latest"
 temperature = 0.2
-timeout = 90.0
+timeout = 60.0
 
 [crawler]
-enabled = true
-sources = ["nvd", "exploitdb", "ghsa"]
-refresh_interval = "24h"
+enabled = false
 
 [output.vault]
-enabled = true
+enabled = false
 path = "~/OpenClaw-Vault/WarGames"
 
 [output.database]
-path = "~/.local/share/wargames/state.db"
+path = "~/.local/share/wargames/test-state.db"
 
 [scoring]
 profile = "balanced"
