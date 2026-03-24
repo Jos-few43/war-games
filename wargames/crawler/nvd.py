@@ -4,12 +4,10 @@ This module provides NVD API integration to check discovered exploits
 against known CVEs.
 """
 
-import httpx
 import os
 from dataclasses import dataclass
-from datetime import datetime
-from typing import AsyncIterator
 
+import httpx
 
 NVD_API_BASE = 'https://services.nvd.nist.gov/rest/json/cves/2.0'
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import os
 from enum import Enum
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 

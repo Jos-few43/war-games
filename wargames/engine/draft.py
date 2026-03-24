@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from wargames.models import DraftPick
 from wargames.engine.loadouts import resolve_loadout
+from wargames.models import DraftPick
 
 
 @dataclass
@@ -31,7 +31,7 @@ class DraftPool:
         raise ValueError(f"'{name}' not found in pool")
 
     @classmethod
-    async def from_cves(cls, db, include_defaults: bool = True) -> "DraftPool":
+    async def from_cves(cls, db, include_defaults: bool = True) -> DraftPool:
         """Build a draft pool that includes crawled CVEs as draftable resources."""
         cve_rows = await db.get_cves()
         cve_resources = [
@@ -48,7 +48,7 @@ class DraftPool:
         return cls(cve_resources)
 
     @classmethod
-    def default(cls) -> "DraftPool":
+    def default(cls) -> DraftPool:
         resources = [
             # Offensive
             Resource("port_scanner", "offensive", "Scans target systems for open ports and running services."),

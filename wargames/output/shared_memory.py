@@ -4,9 +4,8 @@ This module provides integration with the ~/shared-memory/ system
 for cross-session knowledge persistence.
 """
 
-from pathlib import Path
 from datetime import datetime
-import json
+from pathlib import Path
 
 
 class SharedMemoryExporter:
@@ -114,6 +113,6 @@ class SharedMemoryQuery:
             return ''
         content = path.read_text()
         if 'War Games' in content or 'wargames' in content:
-            lines = [l for l in content.split('\n') if 'War Games' in l or 'ELO' in l]
+            lines = [line for line in content.split('\n') if 'War Games' in line or 'ELO' in line]
             return '\n'.join(lines[:10])
         return ''

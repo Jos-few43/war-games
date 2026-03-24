@@ -6,12 +6,9 @@ import aiosqlite
 
 from wargames.models import (
     AttackResult,
-    BugReport,
     DefenseResult,
-    Domain,
     DraftPick,
     MatchOutcome,
-    Patch,
     Phase,
     RoundResult,
     Severity,

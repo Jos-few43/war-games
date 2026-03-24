@@ -11,9 +11,9 @@ Usage:
     task = create_task("fix_test_failure", context={"error": "..."})
 """
 
-from typing import Any
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class TaskType(str, Enum):

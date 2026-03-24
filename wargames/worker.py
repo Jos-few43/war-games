@@ -2,8 +2,9 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from wargames.models import GameConfig
+
 from wargames.engine.game import GameEngine
+from wargames.models import GameConfig
 from wargames.output.vault import VaultWriter
 from wargames.tui.bridge import EventBridge
 

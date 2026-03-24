@@ -7,14 +7,10 @@ of competition including draft phase, turn-based combat, and debrief.
 from __future__ import annotations
 
 from wargames.models import (
-    RoundResult,
-    Phase,
-    MatchOutcome,
-    AttackResult,
     DefenseResult,
-    DraftPick,
-    BugReport,
-    Patch,
+    MatchOutcome,
+    Phase,
+    RoundResult,
     ScoringProfile,
 )
 
@@ -142,8 +138,8 @@ class RoundEngine:
         # Target selection happens after draft so CVE picks can inform the scenario
         if not target:
             if phase in (Phase.REAL_CVES, Phase.OPEN_ENDED):
-                from wargames.engine.scenario import ScenarioGenerator
                 from wargames.engine.draft import Resource
+                from wargames.engine.scenario import ScenarioGenerator
 
                 cve_resources = [
                     Resource(pick.resource_name, 'cve', pick.resource_name)

@@ -8,25 +8,26 @@ strategy evolution, ELO ratings, and database persistence.
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
-from pathlib import Path
 from collections.abc import AsyncGenerator
-from wargames.models import GameConfig, Phase, RoundResult, MatchOutcome
-from wargames.output.db import Database
-from wargames.llm.client import LLMClient
-from wargames.teams.red import RedTeamAgent
-from wargames.teams.blue import BlueTeamAgent
-from wargames.engine.judge import Judge
+from datetime import UTC, datetime
+from pathlib import Path
+
 from wargames.engine.draft import DraftEngine
+from wargames.engine.elo import calculate_elo
+from wargames.engine.judge import Judge
 from wargames.engine.round import RoundEngine
 from wargames.engine.strategy import (
     extract_strategies,
-    save_strategies,
     get_top_strategies,
-    update_win_rates,
     prune_strategies,
+    save_strategies,
+    update_win_rates,
 )
-from wargames.engine.elo import calculate_elo
+from wargames.llm.client import LLMClient
+from wargames.models import GameConfig, MatchOutcome, Phase, RoundResult
+from wargames.output.db import Database
+from wargames.teams.blue import BlueTeamAgent
+from wargames.teams.red import RedTeamAgent
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +91,7 @@ class GameEngine:
 
         # Generate and persist a new season record
         self._season_id = str(uuid.uuid4())[:8]
-        started_at = datetime.now(timezone.utc).isoformat()
+        started_at = datetime.now(UTC).isoformat()
         await self.db.save_season(
             season_id=self._season_id,
             config_name=self.config.game.name,
@@ -433,7 +434,7 @@ class GameEngine:
                     winner = self.config.teams.blue.model_name
                 else:
                     winner = 'draw'
-                ended_at = datetime.now(timezone.utc).isoformat()
+                ended_at = datetime.now(UTC).isoformat()
                 await self.db.end_season(
                     season_id=self._season_id,
                     ended_at=ended_at,

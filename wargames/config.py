@@ -1,7 +1,8 @@
 from pathlib import Path
-import tomli
-from wargames.models import GameConfig, TournamentConfig, ScoringProfile
 
+import tomli
+
+from wargames.models import GameConfig, ScoringProfile, TournamentConfig
 
 PRESET_DIR = Path(__file__).resolve().parent.parent / 'config' / 'scoring'
 

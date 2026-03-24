@@ -1,10 +1,8 @@
 """War Games Manager Crew - Autonomous season management with CrewAI."""
 
-from crewai import Agent, Crew, Task, Process
+from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
-from crewai.tools import BashTool, FileReadTool, FileWriteTool, DirectoryReadTool
-
-from wargames.crewai import TaskType
+from crewai.tools import BashTool, DirectoryReadTool, FileReadTool, FileWriteTool
 
 
 class WarGamesManagerCrew(CrewBase):

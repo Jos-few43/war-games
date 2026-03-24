@@ -11,19 +11,17 @@ import logging
 from dataclasses import dataclass, field
 from itertools import groupby
 
+from wargames.engine.elo import calculate_elo
 from wargames.models import (
     DraftSettings,
     DraftStyle,
     GameConfig,
     GameSettings,
-    MatchOutcome,
     ModelEntry,
-    Phase,
     TeamSettings,
     TeamsSettings,
     TournamentConfig,
 )
-from wargames.engine.elo import calculate_elo
 
 
 @dataclass
@@ -222,7 +220,6 @@ class TournamentRunner:
         config = self._build_game_config(red, blue, judge)
         runner = SandboxRunner(config)
 
-        total_tokens = 0
         game_outcome = 'draw'
         red_score = 0
         blue_score = 0

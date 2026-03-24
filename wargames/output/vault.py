@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
-from wargames.models import RoundResult, BugReport, Patch
+
+from wargames.models import BugReport, Patch, RoundResult
 
 
 class VaultWriter:

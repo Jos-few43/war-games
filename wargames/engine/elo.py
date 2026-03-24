@@ -6,7 +6,7 @@ Standard ELO implementation with K-factor=32 and initial rating=1500.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 K_FACTOR: int = 32
 INITIAL_RATING: float = 1500.0
@@ -83,7 +83,7 @@ class ModelRating:
     last_played: str = field(default="")
 
     def _touch(self) -> None:
-        self.last_played = datetime.now(timezone.utc).isoformat()
+        self.last_played = datetime.now(UTC).isoformat()
 
     def record_win(self, new_rating: float) -> None:
         """Update state after a win."""

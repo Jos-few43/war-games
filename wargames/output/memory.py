@@ -7,13 +7,11 @@ and discovered bugs using Qdrant for semantic search.
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
-from typing import AsyncIterator
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, Filter, FieldConditions, MatchValue
+from qdrant_client.models import Distance, FieldConditions, Filter, MatchValue, VectorParams
 
-from wargames.models import RoundResult, BugReport, Strategy
+from wargames.models import BugReport, RoundResult, Strategy
 
 
 class MemoryType(Enum):

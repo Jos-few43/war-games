@@ -1,7 +1,8 @@
-from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Static, RichLog
-from textual.containers import Horizontal, Vertical
 import aiosqlite
+from textual.app import App, ComposeResult
+from textual.containers import Horizontal
+from textual.widgets import Footer, Header, RichLog, Static
+
 from wargames.tui.bridge import EventBridge
 
 

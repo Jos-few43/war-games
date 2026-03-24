@@ -1,6 +1,8 @@
 import asyncio
 import logging
+
 import httpx
+
 from wargames.models import TeamSettings
 
 logger = logging.getLogger(__name__)
@@ -112,7 +114,7 @@ class LLMClient:
             httpx.RemoteProtocolError,
             httpx.ConnectError,
             httpx.ReadTimeout,
-        ) as exc:
+        ):
             if not self._fallback_http:
                 raise
             logger.warning(

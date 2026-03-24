@@ -1,6 +1,7 @@
 import asyncio
-import httpx
 from typing import Any
+
+import httpx
 
 
 class NVDCrawler:
@@ -18,15 +19,13 @@ class NVDCrawler:
         if keyword:
             params['keywordSearch'] = keyword  # type: ignore[assignment]
 
-        last_exc = None
         for attempt in range(self.MAX_RETRIES):
             try:
                 response = await self._http.get(self.BASE_URL, params=params)
                 response.raise_for_status()
                 data = response.json()
                 return self._parse(data)
-            except (httpx.TimeoutException, httpx.ConnectError) as exc:
-                last_exc = exc
+            except (httpx.TimeoutException, httpx.ConnectError):
                 if attempt < self.MAX_RETRIES - 1:
                     await asyncio.sleep(self.RETRY_BACKOFF * (attempt + 1))
             except httpx.HTTPStatusError:

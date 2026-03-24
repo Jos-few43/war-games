@@ -5,9 +5,9 @@ import signal
 import sys
 from pathlib import Path
 
+from wargames.config import load_config
 from wargames.crawler.cve import NVDCrawler
 from wargames.crawler.exploitdb import ExploitDBCrawler
-from wargames.config import load_config
 from wargames.engine.sandbox import SandboxRunner
 from wargames.models import MatchOutcome
 from wargames.output.db import Database
@@ -421,7 +421,7 @@ def main(argv: list[str] | None = None):
         async def _sandbox():
             result = await runner.run(loadout_overrides=loadout_overrides)
 
-            print(f'=== Sandbox Round ===')
+            print('=== Sandbox Round ===')
             print(f'Phase: {result.phase.name}  |  Outcome: {result.outcome.value}')
             print(
                 f'Score: Red {result.red_score} — Blue {result.blue_score} (threshold {result.blue_threshold})'
@@ -475,8 +475,8 @@ def main(argv: list[str] | None = None):
             print(f'Running crew task: {args.task}')
             result = run_crew(args.task, inputs)
             print(result.raw)
-        except ImportError as e:
-            print(f'Error: crewai not installed. Run: pip install -e ".[crewai]"')
+        except ImportError:
+            print('Error: crewai not installed. Run: pip install -e ".[crewai]"')
             sys.exit(1)
 
 
