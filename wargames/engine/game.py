@@ -200,7 +200,7 @@ class GameEngine:
                 MatchOutcome.RED_CRITICAL_WIN,
             )
 
-            # Extract and save strategies, then update win rates
+            # Extract and save strategies, then update win rates and opponent modeling
             try:
                 red_strats = await extract_strategies(result, 'red', self._judge_client)
                 blue_strats = await extract_strategies(result, 'blue', self._judge_client)
@@ -209,6 +209,12 @@ class GameEngine:
                 await update_win_rates(
                     strategy_ids=blue_used_ids, round_won=not won_red, db=self.db
                 )
+
+                # Update opponent modeling: track how opponent's strategies performed
+                # For red team's perspective: track how blue's strategies performed against red
+                # For blue team's perspective: track how red's strategies performed against blue
+                await self._update_opponent_modeling(red_used_ids, blue_used_ids, won_red, self.db)
+
                 await prune_strategies('red', self._current_phase.value, self.db)
                 await prune_strategies('blue', self._current_phase.value, self.db)
             except Exception as exc:
@@ -338,6 +344,70 @@ class GameEngine:
         """
         self._stop = True
         self._pause_event.set()  # Unblock if paused
+
+    async def _update_opponent_modeling(
+        self, red_used_ids: list[int], blue_used_ids: list[int], red_won: bool, db
+    ) -> None:
+        """Update opponent modeling: track how opponent's strategies performed."""
+        # Update blue team's perspective on red team's strategies
+        for strategy_id in red_used_ids:
+            # Get the strategy to check current opponent modeling values
+            cursor = await db._conn.execute(
+                'SELECT opp_usage_count, opp_effectiveness FROM strategies WHERE id = ?',
+                (strategy_id,),
+            )
+            row = await cursor.fetchone()
+            if row:
+                old_opp_usage = row['opp_usage_count'] or 0
+                old_opp_effectiveness = row['opp_effectiveness'] or 0.0
+
+                # Increment opponent usage count
+                new_opp_usage = old_opp_usage + 1
+
+                # Update opponent effectiveness:
+                # If red won, blue's defense was less effective (lower effectiveness)
+                # If red lost, blue's defense was more effective (higher effectiveness)
+                # Using incremental averaging similar to TD learning
+                new_opp_effectiveness = old_opp_effectiveness + 0.1 * (
+                    0.0 if red_won else 1.0 - old_opp_effectiveness
+                )
+
+                await db._conn.execute(
+                    """UPDATE strategies
+                       SET opp_usage_count = ?, opp_effectiveness = ?
+                       WHERE id = ?""",
+                    (new_opp_usage, new_opp_effectiveness, strategy_id),
+                )
+
+        # Update red team's perspective on blue team's strategies
+        for strategy_id in blue_used_ids:
+            # Get the strategy to check current opponent modeling values
+            cursor = await db._conn.execute(
+                'SELECT opp_usage_count, opp_effectiveness FROM strategies WHERE id = ?',
+                (strategy_id,),
+            )
+            row = await cursor.fetchone()
+            if row:
+                old_opp_usage = row['opp_usage_count'] or 0
+                old_opp_effectiveness = row['opp_effectiveness'] or 0.0
+
+                # Increment opponent usage count
+                new_opp_usage = old_opp_usage + 1
+
+                # Update opponent effectiveness:
+                # If blue won (red lost), red's offense was less effective
+                # If blue lost (red won), red's offense was more effective
+                new_opp_effectiveness = old_opp_effectiveness + 0.1 * (
+                    0.0 if not red_won else 1.0 - old_opp_effectiveness
+                )
+
+                await db._conn.execute(
+                    """UPDATE strategies
+                       SET opp_usage_count = ?, opp_effectiveness = ?
+                       WHERE id = ?""",
+                    (new_opp_usage, new_opp_effectiveness, strategy_id),
+                )
+        await db._conn.commit()
 
     async def cleanup(self):
         """Close all resources and finalize the season.

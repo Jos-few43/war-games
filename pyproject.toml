@@ -31,6 +31,9 @@ asyncio_mode = "strict"
 timeout = 10
 addopts = "--strict-markers --tb=short"
 testpaths = ["tests"]
+markers = [
+    "benchmark: mark test as a benchmark",
+]
 
 [tool.coverage.run]
 source = ["wargames"]

@@ -2,7 +2,7 @@
 
 [tournament]
 name = "cloud-tournament"
-rounds = 1
+rounds = 2
 games_per_match = 1
 game_rounds = 1
 turn_limit = 2
@@ -17,6 +17,16 @@ endpoint = "http://127.0.0.1:4002/v1"
 model_name = "gemini-flash"
 
 [[models]]
+name = "gemini-2-flash"
+endpoint = "http://127.0.0.1:4002/v1"
+model_name = "gemini-2-flash"
+
+[[models]]
 name = "llama-3-70b"
 endpoint = "http://127.0.0.1:4002/v1"
 model_name = "llama-3-70b"
+
+[[models]]
+name = "llama-groq"
+endpoint = "http://127.0.0.1:4002/v1"
+model_name = "llama-3-70b-groq"

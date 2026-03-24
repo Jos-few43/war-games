@@ -19,19 +19,19 @@ Extract 1-5 strategies. If nothing useful can be extracted, return an empty arra
 
 async def extract_strategies(result: RoundResult, team: str, llm) -> list[Strategy]:
     """Use LLM to parse debrief text into structured Strategy objects."""
-    debrief = result.red_debrief if team == "red" else result.blue_debrief
+    debrief = result.red_debrief if team == 'red' else result.blue_debrief
     if not debrief or not debrief.strip():
         return []
 
     user_message = (
-        f"Team: {team}\n"
-        f"Round: {result.round_number}\n"
-        f"Phase: {result.phase.value}\n\n"
-        f"Debrief:\n{debrief}"
+        f'Team: {team}\n'
+        f'Round: {result.round_number}\n'
+        f'Phase: {result.phase.value}\n\n'
+        f'Debrief:\n{debrief}'
     )
 
     raw = await llm.chat(
-        messages=[{"role": "user", "content": user_message}],
+        messages=[{'role': 'user', 'content': user_message}],
         system=EXTRACT_SYSTEM_PROMPT,
     )
 
@@ -46,8 +46,8 @@ async def extract_strategies(result: RoundResult, team: str, llm) -> list[Strate
     for item in items:
         if not isinstance(item, dict):
             continue
-        strategy_type = item.get("strategy_type", "")
-        content = item.get("content", "")
+        strategy_type = item.get('strategy_type', '')
+        content = item.get('content', '')
         if strategy_type and content:
             strategies.append(
                 Strategy(
@@ -56,6 +56,9 @@ async def extract_strategies(result: RoundResult, team: str, llm) -> list[Strate
                     strategy_type=strategy_type,
                     content=content,
                     created_round=result.round_number,
+                    # Initialize opponent modeling fields to default values
+                    opp_usage_count=0,
+                    opp_effectiveness=0.0,
                 )
             )
 
@@ -73,19 +76,42 @@ def _word_overlap(a: str, b: str) -> float:
     return len(intersection) / len(union)
 
 
+def _calculate_strategy_diversity(strategies: list[Strategy]) -> float:
+    """Calculate diversity score for a list of strategies.
+
+    Returns average pairwise dissimilarity (1 - similarity) between strategies.
+    Higher score means more diverse strategies.
+    """
+    if len(strategies) < 2:
+        return 0.0
+
+    total_similarity = 0.0
+    comparisons = 0
+
+    for i in range(len(strategies)):
+        for j in range(i + 1, len(strategies)):
+            similarity = _word_overlap(strategies[i].content, strategies[j].content)
+            total_similarity += similarity
+            comparisons += 1
+
+    average_similarity = total_similarity / comparisons if comparisons > 0 else 0.0
+    # Return dissimilarity as diversity score
+    return 1.0 - average_similarity
+
+
 async def save_strategies(strategies: list[Strategy], db, *, dedup_threshold: float = 0.7) -> None:
     """Insert Strategy objects, skipping duplicates that overlap with existing strategies."""
     for s in strategies:
         # Check for duplicates against ALL strategies (active and inactive)
         cursor = await db._conn.execute(
-            "SELECT content FROM strategies WHERE team = ? AND phase = ? AND strategy_type = ?",
+            'SELECT content FROM strategies WHERE team = ? AND phase = ? AND strategy_type = ?',
             (s.team, s.phase, s.strategy_type),
         )
         existing_rows = await cursor.fetchall()
 
         is_duplicate = False
         for row in existing_rows:
-            if _word_overlap(s.content, row["content"]) >= dedup_threshold:
+            if _word_overlap(s.content, row['content']) >= dedup_threshold:
                 is_duplicate = True
                 break
 
@@ -95,10 +121,20 @@ async def save_strategies(strategies: list[Strategy], db, *, dedup_threshold: fl
         await db._conn.execute(
             """
             INSERT INTO strategies
-                (team, phase, strategy_type, content, win_rate, usage_count, created_round)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (team, phase, strategy_type, content, win_rate, usage_count, created_round, opp_usage_count, opp_effectiveness)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (s.team, s.phase, s.strategy_type, s.content, s.win_rate, s.usage_count, s.created_round),
+            (
+                s.team,
+                s.phase,
+                s.strategy_type,
+                s.content,
+                s.win_rate,
+                s.usage_count,
+                s.created_round,
+                s.opp_usage_count,
+                s.opp_effectiveness,
+            ),
         )
     await db._conn.commit()
 
@@ -111,6 +147,7 @@ async def get_top_strategies(
         cursor = await db._conn.execute(
             """
             SELECT id, team, phase, strategy_type, content, win_rate, usage_count, created_round,
+                   opp_usage_count, opp_effectiveness,
                    (win_rate * 0.7 + (1.0 / (1 + (? - created_round))) * 0.3) AS score
             FROM strategies
             WHERE team = ? AND phase = ? AND active = 1
@@ -122,7 +159,8 @@ async def get_top_strategies(
     else:
         cursor = await db._conn.execute(
             """
-            SELECT id, team, phase, strategy_type, content, win_rate, usage_count, created_round
+            SELECT id, team, phase, strategy_type, content, win_rate, usage_count, created_round,
+                   opp_usage_count, opp_effectiveness
             FROM strategies
             WHERE team = ? AND phase = ? AND active = 1
             ORDER BY win_rate DESC
@@ -133,14 +171,16 @@ async def get_top_strategies(
     rows = await cursor.fetchall()
     return [
         Strategy(
-            id=row["id"],
-            team=row["team"],
-            phase=row["phase"],
-            strategy_type=row["strategy_type"],
-            content=row["content"],
-            win_rate=row["win_rate"],
-            usage_count=row["usage_count"],
-            created_round=row["created_round"],
+            id=row['id'],
+            team=row['team'],
+            phase=row['phase'],
+            strategy_type=row['strategy_type'],
+            content=row['content'],
+            win_rate=row['win_rate'],
+            usage_count=row['usage_count'],
+            created_round=row['created_round'],
+            opp_usage_count=row['opp_usage_count'],
+            opp_effectiveness=row['opp_effectiveness'],
         )
         for row in rows
     ]
@@ -171,33 +211,48 @@ async def prune_strategies(
     )
     excess_rows = await cursor.fetchall()
     if excess_rows:
-        excess_ids = [row["id"] for row in excess_rows]
-        placeholders = ",".join("?" for _ in excess_ids)
+        excess_ids = [row['id'] for row in excess_rows]
+        placeholders = ','.join('?' for _ in excess_ids)
         await db._conn.execute(
-            f"UPDATE strategies SET active = 0 WHERE id IN ({placeholders})",
+            f'UPDATE strategies SET active = 0 WHERE id IN ({placeholders})',
             excess_ids,
         )
     await db._conn.commit()
 
 
-async def update_win_rates(*, strategy_ids: list[int], round_won: bool, db) -> None:
-    """Update win_rate only for strategies that were actually used this round."""
+async def update_win_rates(
+    *, strategy_ids: list[int], round_won: bool, db, learning_rate: float = 0.1
+) -> None:
+    """Update strategy values using temporal difference learning (TD(0)).
+
+    Uses TD(0) update: V(s) <- V(s) + α * [R + γ * V(s') - V(s)]
+    For our case: strategy value <- strategy value + α * [reward - strategy value]
+    where reward is 1.0 for win, 0.0 for loss.
+    Implements adaptive learning rate equivalent to incremental averaging.
+    """
     if not strategy_ids:
         return
-    win_val = 1.0 if round_won else 0.0
-    placeholders = ",".join("?" for _ in strategy_ids)
+
+    reward = 1.0 if round_won else 0.0
+    placeholders = ','.join('?' for _ in strategy_ids)
     cursor = await db._conn.execute(
-        f"SELECT id, win_rate, usage_count FROM strategies WHERE id IN ({placeholders})",
+        f'SELECT id, win_rate, usage_count FROM strategies WHERE id IN ({placeholders})',
         strategy_ids,
     )
     rows = await cursor.fetchall()
     for row in rows:
-        old_rate = row["win_rate"]
-        old_count = row["usage_count"]
+        old_value = row['win_rate']
+        old_count = row['usage_count']
         new_count = old_count + 1
-        new_rate = (old_rate * old_count + win_val) / new_count
+
+        # TD(0) update with adaptive learning rate (equivalent to incremental averaging)
+        # Alpha = 1/(n+1) where n is the usage count
+        alpha = 1.0 / (old_count + 1) if old_count >= 0 else learning_rate
+        td_error = reward - old_value
+        new_value = old_value + alpha * td_error
+
         await db._conn.execute(
-            "UPDATE strategies SET win_rate = ?, usage_count = ? WHERE id = ?",
-            (new_rate, new_count, row["id"]),
+            'UPDATE strategies SET win_rate = ?, usage_count = ? WHERE id = ?',
+            (new_value, new_count, row['id']),
         )
     await db._conn.commit()

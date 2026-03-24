@@ -93,6 +93,8 @@ CREATE TABLE IF NOT EXISTS strategies (
     win_rate       REAL DEFAULT 0.0,
     usage_count    INTEGER DEFAULT 0,
     created_round  INTEGER,
+    opp_usage_count INTEGER DEFAULT 0,
+    opp_effectiveness REAL DEFAULT 0.0,
     active         INTEGER DEFAULT 1
 )
 """
@@ -202,11 +204,19 @@ class Database:
 
     async def _migrate(self) -> None:
         """Add columns that may be missing from older databases."""
-        cursor = await self._conn.execute("PRAGMA table_info(strategies)")
+        if self._conn is None:
+            return
+        cursor = await self._conn.execute('PRAGMA table_info(strategies)')
         columns = {row[1] for row in await cursor.fetchall()}
-        if "active" not in columns:
+        if 'active' not in columns:
+            await self._conn.execute('ALTER TABLE strategies ADD COLUMN active INTEGER DEFAULT 1')
+        if 'opp_usage_count' not in columns:
             await self._conn.execute(
-                "ALTER TABLE strategies ADD COLUMN active INTEGER DEFAULT 1"
+                'ALTER TABLE strategies ADD COLUMN opp_usage_count INTEGER DEFAULT 0'
+            )
+        if 'opp_effectiveness' not in columns:
+            await self._conn.execute(
+                'ALTER TABLE strategies ADD COLUMN opp_effectiveness REAL DEFAULT 0.0'
             )
 
     async def close(self) -> None:
@@ -240,9 +250,9 @@ class Database:
         )
 
         # Delete existing child rows so a re-save is idempotent.
-        for table in ("attacks", "defenses", "draft_picks", "bug_reports", "patches"):
+        for table in ('attacks', 'defenses', 'draft_picks', 'bug_reports', 'patches'):
             await self._conn.execute(
-                f"DELETE FROM {table} WHERE round_number = ?",
+                f'DELETE FROM {table} WHERE round_number = ?',
                 (result.round_number,),
             )
 
@@ -336,92 +346,90 @@ class Database:
 
     async def get_round(self, round_number: int) -> RoundResult:
         cursor = await self._conn.execute(
-            "SELECT * FROM rounds WHERE round_number = ?", (round_number,)
+            'SELECT * FROM rounds WHERE round_number = ?', (round_number,)
         )
         row = await cursor.fetchone()
         if row is None:
-            raise KeyError(f"Round {round_number} not found")
+            raise KeyError(f'Round {round_number} not found')
 
         # Attacks
         cur_a = await self._conn.execute(
-            "SELECT * FROM attacks WHERE round_number = ? ORDER BY id", (round_number,)
+            'SELECT * FROM attacks WHERE round_number = ? ORDER BY id', (round_number,)
         )
         attack_rows = await cur_a.fetchall()
         attacks = [
             AttackResult(
-                turn=r["turn"],
-                description=r["description"],
-                severity=Severity(r["severity"]) if r["severity"] else None,
-                points=r["points"],
-                success=bool(r["success"]),
-                auto_win=bool(r["auto_win"]),
+                turn=r['turn'],
+                description=r['description'],
+                severity=Severity(r['severity']) if r['severity'] else None,
+                points=r['points'],
+                success=bool(r['success']),
+                auto_win=bool(r['auto_win']),
             )
             for r in attack_rows
         ]
 
         # Defenses
         cur_d = await self._conn.execute(
-            "SELECT * FROM defenses WHERE round_number = ? ORDER BY id", (round_number,)
+            'SELECT * FROM defenses WHERE round_number = ? ORDER BY id', (round_number,)
         )
         defense_rows = await cur_d.fetchall()
         defenses = [
             DefenseResult(
-                turn=r["turn"],
-                description=r["description"],
-                blocked=bool(r["blocked"]),
-                points_deducted=r["points_deducted"],
+                turn=r['turn'],
+                description=r['description'],
+                blocked=bool(r['blocked']),
+                points_deducted=r['points_deducted'],
             )
             for r in defense_rows
         ]
 
         # Draft picks
         cur_p = await self._conn.execute(
-            "SELECT * FROM draft_picks WHERE round_number = ? ORDER BY id", (round_number,)
+            'SELECT * FROM draft_picks WHERE round_number = ? ORDER BY id', (round_number,)
         )
         pick_rows = await cur_p.fetchall()
         red_draft = [
             DraftPick(
                 round=round_number,
-                team=r["team"],
-                resource_name=r["resource_name"],
-                resource_category=r["resource_category"],
+                team=r['team'],
+                resource_name=r['resource_name'],
+                resource_category=r['resource_category'],
             )
             for r in pick_rows
-            if r["team"] == "red"
+            if r['team'] == 'red'
         ]
         blue_draft = [
             DraftPick(
                 round=round_number,
-                team=r["team"],
-                resource_name=r["resource_name"],
-                resource_category=r["resource_category"],
+                team=r['team'],
+                resource_name=r['resource_name'],
+                resource_category=r['resource_category'],
             )
             for r in pick_rows
-            if r["team"] == "blue"
+            if r['team'] == 'blue'
         ]
 
         return RoundResult(
-            round_number=row["round_number"],
-            phase=Phase(row["phase"]),
-            outcome=MatchOutcome(row["outcome"]),
-            red_score=row["red_score"],
-            blue_threshold=row["blue_threshold"],
+            round_number=row['round_number'],
+            phase=Phase(row['phase']),
+            outcome=MatchOutcome(row['outcome']),
+            red_score=row['red_score'],
+            blue_threshold=row['blue_threshold'],
             red_draft=red_draft,
             blue_draft=blue_draft,
             attacks=attacks,
             defenses=defenses,
-            red_debrief=row["red_debrief"] or "",
-            blue_debrief=row["blue_debrief"] or "",
+            red_debrief=row['red_debrief'] or '',
+            blue_debrief=row['blue_debrief'] or '',
         )
 
     async def get_all_rounds(self) -> list[RoundResult]:
-        cursor = await self._conn.execute(
-            "SELECT round_number FROM rounds ORDER BY round_number"
-        )
+        cursor = await self._conn.execute('SELECT round_number FROM rounds ORDER BY round_number')
         rows = await cursor.fetchall()
         results = []
         for row in rows:
-            results.append(await self.get_round(row["round_number"]))
+            results.append(await self.get_round(row['round_number']))
         return results
 
     async def get_season_stats(self) -> dict:
@@ -437,29 +445,27 @@ class Database:
         )
         row = await cursor.fetchone()
         return {
-            "red_wins": row["red_wins"] or 0,
-            "blue_wins": row["blue_wins"] or 0,
-            "auto_wins": row["auto_wins"] or 0,
-            "total_rounds": row["total_rounds"] or 0,
+            'red_wins': row['red_wins'] or 0,
+            'blue_wins': row['blue_wins'] or 0,
+            'auto_wins': row['auto_wins'] or 0,
+            'total_rounds': row['total_rounds'] or 0,
         }
 
     async def set_game_state(self, key: str, value: str) -> None:
         await self._conn.execute(
-            "INSERT OR REPLACE INTO game_state (key, value) VALUES (?, ?)",
+            'INSERT OR REPLACE INTO game_state (key, value) VALUES (?, ?)',
             (key, value),
         )
         await self._conn.commit()
 
     async def get_game_state(self, key: str) -> str | None:
-        cursor = await self._conn.execute(
-            "SELECT value FROM game_state WHERE key = ?", (key,)
-        )
+        cursor = await self._conn.execute('SELECT value FROM game_state WHERE key = ?', (key,))
         row = await cursor.fetchone()
-        return row["value"] if row else None
+        return row['value'] if row else None
 
     async def get_cves(self, limit: int = 20) -> list[dict]:
         cursor = await self._conn.execute(
-            "SELECT * FROM crawled_cves ORDER BY ROWID DESC LIMIT ?", (limit,)
+            'SELECT * FROM crawled_cves ORDER BY ROWID DESC LIMIT ?', (limit,)
         )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
@@ -472,14 +478,14 @@ class Database:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                cve.get("cve_id"),
-                cve.get("source"),
-                cve.get("severity"),
-                cve.get("domain"),
-                cve.get("description"),
-                cve.get("exploit_code"),
-                cve.get("fix_hint"),
-                cve.get("fetched_at"),
+                cve.get('cve_id'),
+                cve.get('source'),
+                cve.get('severity'),
+                cve.get('domain'),
+                cve.get('description'),
+                cve.get('exploit_code'),
+                cve.get('fix_hint'),
+                cve.get('fetched_at'),
             ),
         )
         await self._conn.commit()
@@ -506,15 +512,13 @@ class Database:
 
     async def get_model_rating(self, model_name: str) -> dict | None:
         cursor = await self._conn.execute(
-            "SELECT * FROM model_ratings WHERE model_name = ?", (model_name,)
+            'SELECT * FROM model_ratings WHERE model_name = ?', (model_name,)
         )
         row = await cursor.fetchone()
         return dict(row) if row else None
 
     async def get_all_ratings(self) -> list[dict]:
-        cursor = await self._conn.execute(
-            "SELECT * FROM model_ratings ORDER BY rating DESC"
-        )
+        cursor = await self._conn.execute('SELECT * FROM model_ratings ORDER BY rating DESC')
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
 
@@ -537,9 +541,7 @@ class Database:
         await self._conn.commit()
 
     async def get_season(self, season_id: str) -> dict | None:
-        cursor = await self._conn.execute(
-            "SELECT * FROM seasons WHERE season_id = ?", (season_id,)
-        )
+        cursor = await self._conn.execute('SELECT * FROM seasons WHERE season_id = ?', (season_id,))
         row = await cursor.fetchone()
         return dict(row) if row else None
 
@@ -580,9 +582,7 @@ class Database:
         await self._conn.commit()
 
     async def get_token_usage(self) -> list[dict]:
-        cursor = await self._conn.execute(
-            "SELECT * FROM token_usage ORDER BY id"
-        )
+        cursor = await self._conn.execute('SELECT * FROM token_usage ORDER BY id')
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
 
@@ -598,9 +598,9 @@ class Database:
         )
         row = await cursor.fetchone()
         return {
-            "prompt_tokens": row["prompt_tokens"] or 0,
-            "completion_tokens": row["completion_tokens"] or 0,
-            "cost": row["cost"] or 0.0,
+            'prompt_tokens': row['prompt_tokens'] or 0,
+            'completion_tokens': row['completion_tokens'] or 0,
+            'cost': row['cost'] or 0.0,
         }
 
     # --- tournament_matches ---
@@ -622,14 +622,13 @@ class Database:
                  red_score, blue_score, outcome)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (tournament_name, swiss_round, red_model, blue_model,
-             red_score, blue_score, outcome),
+            (tournament_name, swiss_round, red_model, blue_model, red_score, blue_score, outcome),
         )
         await self._conn.commit()
 
     async def get_tournament_matches(self, tournament_name: str) -> list[dict]:
         cursor = await self._conn.execute(
-            "SELECT * FROM tournament_matches WHERE tournament_name = ? ORDER BY id",
+            'SELECT * FROM tournament_matches WHERE tournament_name = ? ORDER BY id',
             (tournament_name,),
         )
         rows = await cursor.fetchall()

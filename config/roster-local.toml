@@ -1,0 +1,20 @@
+# Local tournament roster using Ollama models
+# Usage: wargames tournament --roster config/roster-local.toml
+
+[tournament]
+name = "local-showdown"
+rounds = 2
+games_per_match = 1
+game_rounds = 1
+turn_limit = 4
+score_threshold = 8
+
+[[models]]
+name = "mistral-nemo"
+endpoint = "http://localhost:11434/v1"
+model_name = "mistral-nemo:latest"
+
+[[models]]
+name = "deepseek-coder"
+endpoint = "http://localhost:11434/v1"
+model_name = "deepseek-coder:6.7b"

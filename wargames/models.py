@@ -5,23 +5,23 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class DraftStyle(str, Enum):
-    SNAKE = "snake"
-    LINEAR = "linear"
+    SNAKE = 'snake'
+    LINEAR = 'linear'
 
 
 class Severity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
+    LOW = 'low'
+    MEDIUM = 'medium'
+    HIGH = 'high'
+    CRITICAL = 'critical'
 
 
 class Domain(str, Enum):
-    PROMPT_INJECTION = "prompt-injection"
-    CODE_VULN = "code-vuln"
-    CONFIG = "config"
-    SOCIAL_ENGINEERING = "social-engineering"
-    MIXED = "mixed"
+    PROMPT_INJECTION = 'prompt-injection'
+    CODE_VULN = 'code-vuln'
+    CONFIG = 'config'
+    SOCIAL_ENGINEERING = 'social-engineering'
+    MIXED = 'mixed'
 
 
 class Phase(int, Enum):
@@ -32,15 +32,16 @@ class Phase(int, Enum):
 
 
 class MatchOutcome(str, Enum):
-    RED_WIN = "red_win"
-    BLUE_WIN = "blue_win"
-    BLUE_DECISIVE_WIN = "blue_decisive_win"
-    RED_AUTO_WIN = "red_auto_win"  # Legacy — kept for historical DB rows
-    RED_CRITICAL_WIN = "red_critical_win"
-    TIMEOUT = "timeout"
+    RED_WIN = 'red_win'
+    BLUE_WIN = 'blue_win'
+    BLUE_DECISIVE_WIN = 'blue_decisive_win'
+    RED_AUTO_WIN = 'red_auto_win'  # Legacy — kept for historical DB rows
+    RED_CRITICAL_WIN = 'red_critical_win'
+    TIMEOUT = 'timeout'
 
 
 # --- Config models ---
+
 
 class GameSettings(BaseModel):
     name: str
@@ -60,20 +61,20 @@ class TeamSettings(BaseModel):
     model: str
     model_name: str
     temperature: float = Field(ge=0.0, le=2.0)
-    timeout: float = Field(default=30.0, description="HTTP timeout per LLM call in seconds")
-    api_key: str = Field(default="", description="API key or env var ref like $LITELLM_MASTER_KEY")
-    fallback_model: str = Field(default="", description="Fallback base URL")
-    fallback_model_name: str = Field(default="", description="Fallback model name")
-    fallback_api_key: str = Field(default="", description="Fallback API key or env var ref")
-    loadout: str = Field(default="", description="Named loadout preset")
-    loadout_custom: list[str] = Field(default_factory=list, description="Custom resource list")
+    timeout: float = Field(default=30.0, description='HTTP timeout per LLM call in seconds')
+    api_key: str = Field(default='', description='API key or env var ref like $LITELLM_MASTER_KEY')
+    fallback_model: str = Field(default='', description='Fallback base URL')
+    fallback_model_name: str = Field(default='', description='Fallback model name')
+    fallback_api_key: str = Field(default='', description='Fallback API key or env var ref')
+    loadout: str = Field(default='', description='Named loadout preset')
+    loadout_custom: list[str] = Field(default_factory=list, description='Custom resource list')
 
-    @model_validator(mode="after")
+    @model_validator(mode='after')
     def resolve_env_vars(self):
-        if self.api_key.startswith("$"):
-            self.api_key = os.environ.get(self.api_key[1:], "")
-        if self.fallback_api_key.startswith("$"):
-            self.fallback_api_key = os.environ.get(self.fallback_api_key[1:], "")
+        if self.api_key.startswith('$'):
+            self.api_key = os.environ.get(self.api_key[1:], '')
+        if self.fallback_api_key.startswith('$'):
+            self.fallback_api_key = os.environ.get(self.fallback_api_key[1:], '')
         return self
 
 
@@ -86,7 +87,7 @@ class TeamsSettings(BaseModel):
 class CrawlerSettings(BaseModel):
     enabled: bool = True
     sources: list[str] = []
-    refresh_interval: str = "24h"
+    refresh_interval: str = '24h'
 
 
 class VaultOutput(BaseModel):
@@ -104,32 +105,38 @@ class OutputSettings(BaseModel):
 
 
 class CostsSettings(BaseModel):
-    rates: dict[str, float] = Field(default_factory=dict, description="Model name to $/1K tokens rate")
+    rates: dict[str, float] = Field(
+        default_factory=dict, description='Model name to $/1K tokens rate'
+    )
 
-    @model_validator(mode="before")
+    @model_validator(mode='before')
     @classmethod
     def _absorb_flat_rates(cls, data: object) -> object:
         """Allow flat TOML [costs] sections where keys are model names directly."""
         if not isinstance(data, dict):
             return data
-        known_fields = {"rates"}
-        flat_rates = {k: v for k, v in data.items() if k not in known_fields and isinstance(v, (int, float))}
+        known_fields = {'rates'}
+        flat_rates = {
+            k: v for k, v in data.items() if k not in known_fields and isinstance(v, (int, float))
+        }
         if flat_rates:
-            merged = dict(data.get("rates") or {})
+            merged = dict(data.get('rates') or {})
             merged.update(flat_rates)
             cleaned = {k: v for k, v in data.items() if k in known_fields}
-            cleaned["rates"] = merged
+            cleaned['rates'] = merged
             return cleaned
         return data
 
 
 # --- Scoring profile models ---
 
+
 class AttackPoints(BaseModel):
     low: int = 1
     medium: int = 3
     high: int = 5
     critical: int = 8
+
 
 class DefenseRewards(BaseModel):
     full_block_threshold: float = 0.7
@@ -139,12 +146,15 @@ class DefenseRewards(BaseModel):
     critical_neutralize_threshold: float = 0.5
     critical_neutralize_points: int = 5
 
+
 class WinConditions(BaseModel):
     score_threshold: int = 10
+
 
 class PhaseAdvanceSettings(BaseModel):
     min_rounds: int = 3
     min_avg_score: float = 7.5
+
 
 class ScoringProfile(BaseModel):
     attack_points: AttackPoints = AttackPoints()
@@ -164,6 +174,7 @@ class GameConfig(BaseModel):
 
 
 # --- Game state models ---
+
 
 class DraftPick(BaseModel):
     round: int
@@ -213,7 +224,7 @@ class Patch(BaseModel):
 class PatchScore(BaseModel):
     addressed: bool = False
     completeness: float = 0.0
-    reasoning: str = ""
+    reasoning: str = ''
 
 
 class RoundResult(BaseModel):
@@ -227,8 +238,8 @@ class RoundResult(BaseModel):
     blue_draft: list[DraftPick]
     attacks: list[AttackResult]
     defenses: list[DefenseResult]
-    red_debrief: str = ""
-    blue_debrief: str = ""
+    red_debrief: str = ''
+    blue_debrief: str = ''
     bug_reports: list[BugReport] = []
     patches: list[Patch] = []
 
@@ -242,6 +253,9 @@ class Strategy(BaseModel):
     win_rate: float = 0.0
     usage_count: int = 0
     created_round: int = 0
+    # Opponent modeling fields
+    opp_usage_count: int = 0  # How many times opponent used this strategy
+    opp_effectiveness: float = 0.0  # How effective opponent's usage was (0.0-1.0)
 
 
 # --- Tournament models ---
@@ -251,15 +265,15 @@ class ModelEntry(BaseModel):
     name: str
     endpoint: str
     model_name: str
-    api_key: str = ""
+    api_key: str = ''
     temperature: float = 0.7
     timeout: float = 60.0
 
-    @field_validator("api_key", mode="before")
+    @field_validator('api_key', mode='before')
     @classmethod
     def resolve_api_key_env(cls, v: str) -> str:
-        if isinstance(v, str) and v.startswith("$"):
-            return os.environ.get(v[1:], "")
+        if isinstance(v, str) and v.startswith('$'):
+            return os.environ.get(v[1:], '')
         return v
 
 
@@ -270,5 +284,5 @@ class TournamentConfig(BaseModel):
     game_rounds: int = Field(default=1, gt=0)
     turn_limit: int = Field(default=4, gt=0)
     score_threshold: int = Field(default=10, gt=0)
-    judge_model: str = Field(default="", description="Override judge model. Empty = higher-rated.")
+    judge_model: str = Field(default='', description='Override judge model. Empty = higher-rated.')
     models: list[ModelEntry] = []

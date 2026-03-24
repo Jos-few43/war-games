@@ -16,7 +16,7 @@ class TestEnginePerformance:
 
         start = time.perf_counter()
         for _ in range(10000):
-            calculate_elo(1500, 1500, 1, 1)
+            calculate_elo(winner_rating=1500, loser_rating=1400)
         elapsed = time.perf_counter() - start
 
         assert elapsed < 1.0, f'ELO calculation too slow: {elapsed:.3f}s'
@@ -44,10 +44,18 @@ class TestLLMPerformance:
     async def test_client_initialization(self):
         """Benchmark LLM client initialization."""
         from wargames.llm.client import LLMClient
+        from wargames.models import TeamSettings
 
         start = time.perf_counter()
         for _ in range(100):
-            client = LLMClient(model='test', api_base='http://localhost:4000', api_key='test')
+            settings = TeamSettings(
+                name='test',
+                model='http://localhost:4000',
+                model_name='test',
+                api_key='test',
+                temperature=0.7,
+            )
+            client = LLMClient(settings)
         elapsed = time.perf_counter() - start
 
         assert elapsed < 2.0, f'Client init too slow: {elapsed:.3f}s'
