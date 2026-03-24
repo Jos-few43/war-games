@@ -316,7 +316,7 @@ async def test_round_engine_default_scoring_matches_balanced():
         "A moderate attack was attempted.",
     )
     # Effectiveness 0.8 — full block under default (0.7) threshold
-    mock_judge.evaluate_defense.return_value = (True, 0.8, "Blocked")
+    mock_judge.evaluate_defense.return_value = (True, 0.8, "Blocked", 0.8)
     mock_blue.defend.return_value = "Defense"
     mock_red.write_debrief.return_value = "Red"
     mock_blue.write_debrief.return_value = "Blue"
@@ -344,7 +344,7 @@ async def test_round_engine_custom_full_block_threshold_and_points():
     )
     # Effectiveness 0.5 — between default partial (0.3) and full (0.7)
     # With custom profile: full_block_threshold=0.4 → 0.5 qualifies as full block
-    mock_judge.evaluate_defense.return_value = (True, 0.5, "Good block")
+    mock_judge.evaluate_defense.return_value = (True, 0.5, "Good block", 0.8)
     mock_blue.defend.return_value = "Defense"
     mock_red.write_debrief.return_value = "Red"
     mock_blue.write_debrief.return_value = "Blue"
@@ -373,7 +373,7 @@ async def test_round_engine_custom_partial_block_points():
         "A minor probe was detected.",
     )
     # Effectiveness 0.5 — partial block under default thresholds
-    mock_judge.evaluate_defense.return_value = (False, 0.5, "Partial")
+    mock_judge.evaluate_defense.return_value = (False, 0.5, "Partial", 0.8)
     mock_blue.defend.return_value = "Partial defense"
     mock_red.write_debrief.return_value = "Red"
     mock_blue.write_debrief.return_value = "Blue"
@@ -403,7 +403,7 @@ async def test_round_engine_custom_critical_neutralize_points():
     )
     mock_blue.defend.return_value = "Containment"
     # Effectiveness 0.7 — above default critical_neutralize_threshold (0.5)
-    mock_judge.evaluate_defense.return_value = (True, 0.7, "Neutralized")
+    mock_judge.evaluate_defense.return_value = (True, 0.7, "Neutralized", 0.8)
     mock_red.write_debrief.return_value = "Red"
     mock_blue.write_debrief.return_value = "Blue"
 
@@ -433,7 +433,7 @@ async def test_round_engine_custom_critical_neutralize_threshold():
     mock_blue.defend.return_value = "Response"
     # Effectiveness 0.4 — below default threshold (0.5) → critical win
     # With custom threshold=0.3 → 0.4 >= 0.3 → neutralized
-    mock_judge.evaluate_defense.return_value = (True, 0.4, "Barely neutralized")
+    mock_judge.evaluate_defense.return_value = (True, 0.4, "Barely neutralized", 0.8)
     mock_red.write_debrief.return_value = "Red"
     mock_blue.write_debrief.return_value = "Blue"
 
@@ -462,7 +462,7 @@ async def test_round_engine_assigned_profile_overrides_constructor_profile():
         AttackResult(turn=0, description="", success=True, severity=Severity.MEDIUM, points=3, auto_win=False),
         "A moderate attack.",
     )
-    mock_judge.evaluate_defense.return_value = (True, 0.8, "Full block")
+    mock_judge.evaluate_defense.return_value = (True, 0.8, "Full block", 0.8)
     mock_blue.defend.return_value = "Defense"
     mock_red.write_debrief.return_value = "Red"
     mock_blue.write_debrief.return_value = "Blue"
@@ -493,7 +493,7 @@ async def test_red_favored_preset_lowers_blue_defense_reward():
     )
     # Effectiveness 0.75 — full block under balanced (0.7), but red-favored threshold is 0.8
     # So under red-favored: 0.75 is a partial block, not a full block
-    mock_judge.evaluate_defense.return_value = (True, 0.75, "Decent block")
+    mock_judge.evaluate_defense.return_value = (True, 0.75, "Decent block", 0.8)
     mock_blue.defend.return_value = "Defense"
     mock_red.write_debrief.return_value = "Red"
     mock_blue.write_debrief.return_value = "Blue"
@@ -524,7 +524,7 @@ async def test_blue_favored_preset_increases_defense_reward():
         "Moderate attack.",
     )
     # Effectiveness 0.65 — full block under blue-favored (0.6), partial under balanced (0.7)
-    mock_judge.evaluate_defense.return_value = (True, 0.65, "Good block")
+    mock_judge.evaluate_defense.return_value = (True, 0.65, "Good block", 0.8)
     mock_blue.defend.return_value = "Defense"
     mock_red.write_debrief.return_value = "Red"
     mock_blue.write_debrief.return_value = "Blue"

@@ -2,14 +2,17 @@
 
 This module contains the Judge class that evaluates attack and defense
 submissions using an LLM to score severity, effectiveness, and completeness.
+Includes confidence scoring and calibration for improved reliability.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
+from typing import Any
 
-from wargames.models import AttackResult, Severity
+from wargames.models import AttackResult, DefenseResult, Severity
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +38,11 @@ CRITICAL (8 pts): "Attacker exploits a deserialization flaw to achieve remote co
 Use these examples to calibrate your severity ratings. Most attacks should NOT be rated low — differentiate carefully.
 
 Respond ONLY with valid JSON in this exact format:
-{"valid": bool, "severity": str|null, "points": int, "auto_win": bool, "reasoning": str, "summary": str}
+{"valid": bool, "severity": str|null, "points": int, "auto_win": bool, "confidence": float, "reasoning": str, "summary": str}
 
 Where severity is one of: "low", "medium", "high", "critical", or null if the attack is invalid.
 Set auto_win to true only for full privilege escalation or confirmed zero-day exploits.
+confidence is 0.0-1.0 indicating your certainty in this assessment.
 The "summary" field must be a single vague sentence describing the attack without specifics (for fog-of-war display to the opposing team)."""
 
 DEFENSE_SYSTEM_PROMPT = """You are an impartial cybersecurity judge evaluating defense measures in a war games simulation.
@@ -55,35 +59,160 @@ Score the defense RELATIVE to the attack severity. A generic defense that might 
 Against critical/high-severity attacks, require defense-in-depth (multiple layers) to score above 0.7. Against low-severity attacks, a single targeted countermeasure may suffice.
 
 Respond ONLY with valid JSON in this exact format:
-{"blocked": bool, "effectiveness": float, "reasoning": str}
+{"blocked": bool, "effectiveness": float, "confidence": float, "reasoning": str}
 
-Set blocked=true if effectiveness >= 0.7."""
+Set blocked=true if effectiveness >= 0.7.
+confidence is 0.0-1.0 indicating your certainty in this assessment."""
 
 PATCH_SYSTEM_PROMPT = """You are an impartial judge evaluating a security patch against a vulnerability report.
 
 Respond ONLY with valid JSON:
-{"addressed": bool, "completeness": float, "reasoning": str}
+{"addressed": bool, "completeness": float, "confidence": float, "reasoning": str}
 
-completeness is 0.0-1.0: 0=useless, 0.5=partial, 1.0=complete fix."""
+completeness is 0.0-1.0: 0=useless, 0.5=partial, 1.0=complete fix.
+confidence is 0.0-1.0 indicating your certainty in this assessment."""
+
+
+@dataclass
+class JudgmentResult:
+    """Result of a judgment with confidence scoring."""
+
+    success: bool
+    severity: Severity | None
+    points: int
+    auto_win: bool
+    confidence: float
+    reasoning: str
+    summary: str
+
+
+@dataclass
+class CalibrationExample:
+    """Known benchmark example for judge calibration."""
+
+    description: str
+    expected_severity: Severity
+    expected_points: int
+    category: str  # "attack", "defense", "patch"
+
+
+class JudgeCalibration:
+    """Calibration system for reducing judge variance against known benchmarks."""
+
+    CALIBRATION_EXAMPLES: list[CalibrationExample] = [
+        # Low severity examples
+        CalibrationExample(
+            description='Attacker sends a crafted HTTP header to enumerate server software version.',
+            expected_severity=Severity.LOW,
+            expected_points=1,
+            category='attack',
+        ),
+        # Medium severity examples
+        CalibrationExample(
+            description="Attacker exploits an IDOR vulnerability to read another user's profile data.",
+            expected_severity=Severity.MEDIUM,
+            expected_points=3,
+            category='attack',
+        ),
+        # High severity examples
+        CalibrationExample(
+            description='Attacker chains an SSRF with a metadata endpoint to extract cloud IAM credentials.',
+            expected_severity=Severity.HIGH,
+            expected_points=5,
+            category='attack',
+        ),
+        # Critical severity examples
+        CalibrationExample(
+            description='Attacker exploits a deserialization flaw to achieve remote code execution on the application server.',
+            expected_severity=Severity.CRITICAL,
+            expected_points=8,
+            category='attack',
+        ),
+    ]
+
+    def __init__(self):
+        self.calibration_drift: dict[str, float] = {}
+        self.judgment_history: list[dict[str, Any]] = []
+
+    def record_judgment(
+        self,
+        judgment_type: str,
+        input_data: dict[str, Any],
+        output_data: dict[str, Any],
+        confidence: float,
+    ) -> None:
+        """Record a judgment for future calibration analysis."""
+        self.judgment_history.append(
+            {
+                'type': judgment_type,
+                'input': input_data,
+                'output': output_data,
+                'confidence': confidence,
+            }
+        )
+
+    def calculate_variance(self) -> float:
+        """Calculate variance in recent judgments against expected values."""
+        if not self.judgment_history:
+            return 0.0
+
+        variances = []
+        for judgment in self.judgment_history[-20:]:  # Last 20 judgments
+            # Find matching calibration example
+            for example in self.CALIBRATION_EXAMPLES:
+                if example.description in str(judgment['input']):
+                    actual_points = judgment['output'].get('points', 0)
+                    expected_points = example.expected_points
+                    variance = abs(actual_points - expected_points) / max(expected_points, 1)
+                    variances.append(variance)
+                    break
+
+        return sum(variances) / len(variances) if variances else 0.0
+
+    def get_confidence_adjustment(self, base_confidence: float, judgment_type: str) -> float:
+        """Adjust confidence based on historical calibration data."""
+        variance = self.calculate_variance()
+        # Higher variance = lower confidence
+        adjustment = max(0.0, 1.0 - variance) * 0.2
+        return min(1.0, base_confidence * (1.0 - adjustment))
+
+    def get_calibration_report(self) -> dict[str, Any]:
+        """Generate a calibration report for monitoring."""
+        variance = self.calculate_variance()
+        return {
+            'total_judgments': len(self.judgment_history),
+            'variance_score': variance,
+            'calibration_status': 'good'
+            if variance < 0.2
+            else 'fair'
+            if variance < 0.4
+            else 'poor',
+            'recommended_action': (
+                'continue' if variance < 0.2 else 'review_prompts' if variance < 0.4 else 'retrain'
+            ),
+        }
 
 
 class Judge:
     """LLM-based judge for evaluating attacks and defenses in war games.
 
     Uses structured prompts to score attack severity, defense effectiveness,
-    and patch completeness. Returns parsed results with reasoning.
+    and patch completeness. Includes confidence scoring and calibration.
 
     Attributes:
         llm: LLM client for generating evaluations.
+        calibration: JudgeCalibration instance for variance reduction.
     """
 
-    def __init__(self, llm) -> None:
+    def __init__(self, llm, enable_calibration: bool = True) -> None:
         """Initialize the judge with an LLM client.
 
         Args:
             llm: LLM client instance with a chat() method for completions.
+            enable_calibration: Whether to enable calibration system.
         """
         self.llm = llm
+        self.calibration = JudgeCalibration() if enable_calibration else None
 
     async def evaluate_attack(
         self,
@@ -129,6 +258,21 @@ class Judge:
                 severity = Severity(data['severity'])
 
             summary = data.get('summary') or fallback_summary
+            confidence = float(data.get('confidence', 0.5))
+            confidence = max(0.0, min(1.0, confidence))
+
+            if self.calibration:
+                confidence = self.calibration.get_confidence_adjustment(confidence, 'attack')
+                self.calibration.record_judgment(
+                    'attack',
+                    {'description': attack_description, 'target': target_description},
+                    {
+                        'severity': data.get('severity'),
+                        'points': data.get('points'),
+                        'valid': data.get('valid'),
+                    },
+                    confidence,
+                )
 
             return (
                 AttackResult(
@@ -163,7 +307,7 @@ class Judge:
         defense_description: str,
         available_tools: list[str],
         attack_severity: str = 'unknown',
-    ) -> tuple[bool, float, str]:
+    ) -> tuple[bool, float, str, float]:
         """Evaluate a defense against an attack.
 
         Scores defense effectiveness relative to attack severity. Higher
@@ -176,9 +320,10 @@ class Judge:
             attack_severity: Severity level of the attack (low/medium/high/critical).
 
         Returns:
-            A tuple of (blocked, effectiveness, reasoning) where blocked
+            A tuple of (blocked, effectiveness, reasoning, confidence) where blocked
             indicates if effectiveness >= 0.7, effectiveness is a score
-            from 0.0 to 1.0, and reasoning explains the evaluation.
+            from 0.0 to 1.0, reasoning explains the evaluation, and confidence
+            indicates certainty in the assessment.
         """
         tools_str = ', '.join(available_tools) if available_tools else 'none'
         user_message = (
@@ -198,11 +343,27 @@ class Judge:
             data = json.loads(response)
             effectiveness = float(data.get('effectiveness', 0.0))
             effectiveness = max(0.0, min(1.0, effectiveness))
+            confidence = float(data.get('confidence', 0.5))
+            confidence = max(0.0, min(1.0, confidence))
             blocked = effectiveness >= 0.7
             reasoning = str(data.get('reasoning', ''))
-            return blocked, effectiveness, reasoning
+
+            if self.calibration:
+                confidence = self.calibration.get_confidence_adjustment(confidence, 'defense')
+                self.calibration.record_judgment(
+                    'defense',
+                    {
+                        'attack': attack_description,
+                        'defense': defense_description,
+                        'severity': attack_severity,
+                    },
+                    {'effectiveness': effectiveness, 'blocked': blocked},
+                    confidence,
+                )
+
+            return blocked, effectiveness, reasoning, confidence
         except (json.JSONDecodeError, KeyError, ValueError):
-            return False, 0.0, 'Failed to parse judge response'
+            return False, 0.0, 'Failed to parse judge response', 0.0
 
     async def evaluate_patch(self, bug_report, patch) -> dict:
         """Evaluate whether a patch adequately addresses a vulnerability.
@@ -228,6 +389,25 @@ class Judge:
                 [{'role': 'user', 'content': user_message}],
                 system=PATCH_SYSTEM_PROMPT,
             )
-            return json.loads(response)
+            data = json.loads(response)
+            confidence = float(data.get('confidence', 0.5))
+            confidence = max(0.0, min(1.0, confidence))
+
+            if self.calibration:
+                confidence = self.calibration.get_confidence_adjustment(confidence, 'patch')
+                self.calibration.record_judgment(
+                    'patch',
+                    {'bug': bug_report.title, 'severity': bug_report.severity.value},
+                    {'addressed': data.get('addressed'), 'completeness': data.get('completeness')},
+                    confidence,
+                )
+
+            data['confidence'] = confidence
+            return data
         except (json.JSONDecodeError, Exception):
-            return {'addressed': False, 'completeness': 0.0, 'reasoning': 'Parse error'}
+            return {
+                'addressed': False,
+                'completeness': 0.0,
+                'confidence': 0.0,
+                'reasoning': 'Parse error',
+            }

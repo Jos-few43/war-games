@@ -207,7 +207,7 @@ class RoundEngine:
                     blue_strategies,
                     attack_severity=attack_severity,
                 )
-                blocked, effectiveness, reasoning = await self.judge.evaluate_defense(
+                blocked, effectiveness, reasoning, _confidence = await self.judge.evaluate_defense(
                     attack_desc,
                     defense_desc,
                     blue_tools,
@@ -270,7 +270,7 @@ class RoundEngine:
                 blue_strategies,
                 attack_severity=attack_severity,
             )
-            blocked, effectiveness, reasoning = await self.judge.evaluate_defense(
+            blocked, effectiveness, reasoning, _confidence = await self.judge.evaluate_defense(
                 attack_desc,
                 defense_desc,
                 blue_tools,
