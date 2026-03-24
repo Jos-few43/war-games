@@ -7,8 +7,11 @@ submissions using an LLM to score severity, effectiveness, and completeness.
 from __future__ import annotations
 
 import json
+import logging
 
 from wargames.models import AttackResult, Severity
+
+logger = logging.getLogger(__name__)
 
 ATTACK_SYSTEM_PROMPT = """You are an impartial cybersecurity judge evaluating attack attempts in a war games simulation.
 
@@ -113,6 +116,7 @@ class Judge:
             '...' if len(attack_description) > 100 else ''
         )
 
+        response = ''
         try:
             response = await self.llm.chat(
                 [{'role': 'user', 'content': user_message}],
@@ -137,7 +141,10 @@ class Judge:
                 ),
                 summary,
             )
-        except (json.JSONDecodeError, KeyError, ValueError):
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            logger.warning(
+                f'Judge JSON parse error: {type(e).__name__} - response was: {response[:200] if response else "empty"}'
+            )
             return (
                 AttackResult(
                     turn=0,
