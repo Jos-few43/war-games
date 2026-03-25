@@ -62,14 +62,24 @@ CREATE TABLE IF NOT EXISTS draft_picks (
 
 CREATE_CRAWLED_CVES = """
 CREATE TABLE IF NOT EXISTS crawled_cves (
-    cve_id       TEXT PRIMARY KEY,
-    source       TEXT,
-    severity     TEXT,
-    domain       TEXT,
-    description  TEXT,
-    exploit_code TEXT,
-    fix_hint     TEXT,
-    fetched_at   TEXT
+    cve_id                   TEXT PRIMARY KEY,
+    source                   TEXT,
+    severity                 TEXT,
+    domain                   TEXT,
+    description              TEXT,
+    exploit_code             TEXT,
+    fix_hint                 TEXT,
+    fetched_at               TEXT,
+    cvss_base_score          REAL,
+    cvss_base_severity       TEXT,
+    cvss_temporal_score      REAL,
+    cvss_exploitability_score REAL,
+    cvss_impact_score        REAL,
+    cvss_vector_string       TEXT,
+    exploit_available        INTEGER DEFAULT 0,
+    exploit_in_metasploit    INTEGER DEFAULT 0,
+    exploit_in_exploitdb     INTEGER DEFAULT 0,
+    poc_available            INTEGER DEFAULT 0
 )
 """
 
@@ -496,8 +506,11 @@ class Database:
         await self._conn.execute(
             """
             INSERT OR REPLACE INTO crawled_cves
-                (cve_id, source, severity, domain, description, exploit_code, fix_hint, fetched_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (cve_id, source, severity, domain, description, exploit_code, fix_hint, fetched_at,
+                 cvss_base_score, cvss_base_severity, cvss_temporal_score,
+                 cvss_exploitability_score, cvss_impact_score, cvss_vector_string,
+                 exploit_available, exploit_in_metasploit, exploit_in_exploitdb, poc_available)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 cve.get('cve_id'),
@@ -508,6 +521,16 @@ class Database:
                 cve.get('exploit_code'),
                 cve.get('fix_hint'),
                 cve.get('fetched_at'),
+                cve.get('cvss_base_score'),
+                cve.get('cvss_base_severity'),
+                cve.get('cvss_temporal_score'),
+                cve.get('cvss_exploitability_score'),
+                cve.get('cvss_impact_score'),
+                cve.get('cvss_vector_string'),
+                int(cve.get('exploit_available', False)),
+                int(cve.get('exploit_in_metasploit', False)),
+                int(cve.get('exploit_in_exploitdb', False)),
+                int(cve.get('poc_available', False)),
             ),
         )
         await self._conn.commit()
