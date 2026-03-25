@@ -56,6 +56,13 @@ class GameSettings(BaseModel):
 class DraftSettings(BaseModel):
     picks_per_team: int = Field(gt=0)
     style: DraftStyle
+    enhanced: bool = Field(
+        default=False, description='Enable enhanced draft with tool pools and ban phase'
+    )
+    bans_per_team: int = Field(
+        default=1, ge=0, description='Number of bans per team in enhanced draft'
+    )
+    use_asymmetric_pools: bool = Field(default=False, description='Use team-specific tool pools')
 
 
 class TeamSettings(BaseModel):

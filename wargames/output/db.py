@@ -169,6 +169,29 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
 )
 """
 
+CREATE_JUDGMENTS = """
+CREATE TABLE IF NOT EXISTS judgments (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    round_number    INTEGER,
+    judgment_type   TEXT,
+    input_data      TEXT,
+    output_data     TEXT,
+    confidence      REAL,
+    created_at      TEXT DEFAULT (datetime('now'))
+)
+"""
+
+CREATE_TOOL_BANS = """
+CREATE TABLE IF NOT EXISTS tool_bans (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    round_number    INTEGER,
+    tool_name       TEXT,
+    banned_by       TEXT,
+    banned_at_round INTEGER,
+    reason          TEXT
+)
+"""
+
 ALL_TABLES = [
     CREATE_ROUNDS,
     CREATE_ATTACKS,
@@ -183,6 +206,8 @@ ALL_TABLES = [
     CREATE_SEASONS,
     CREATE_TOKEN_USAGE,
     CREATE_TOURNAMENT_MATCHES,
+    CREATE_JUDGMENTS,
+    CREATE_TOOL_BANS,
 ]
 
 
@@ -628,5 +653,67 @@ class Database:
             'SELECT * FROM tournament_matches WHERE tournament_name = ? ORDER BY id',
             (tournament_name,),
         )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+    # --- judgments ---
+
+    async def save_judgment(
+        self,
+        round_number: int,
+        judgment_type: str,
+        input_data: str,
+        output_data: str,
+        confidence: float,
+    ) -> None:
+        await self._conn.execute(
+            """
+            INSERT INTO judgments
+                (round_number, judgment_type, input_data, output_data, confidence)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (round_number, judgment_type, input_data, output_data, confidence),
+        )
+        await self._conn.commit()
+
+    async def get_judgments(self, round_number: int | None = None) -> list[dict]:
+        if round_number is not None:
+            cursor = await self._conn.execute(
+                'SELECT * FROM judgments WHERE round_number = ? ORDER BY id',
+                (round_number,),
+            )
+        else:
+            cursor = await self._conn.execute('SELECT * FROM judgments ORDER BY id')
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+    # --- tool_bans ---
+
+    async def save_tool_ban(
+        self,
+        round_number: int,
+        tool_name: str,
+        banned_by: str,
+        banned_at_round: int,
+        reason: str = '',
+    ) -> None:
+        await self._conn.execute(
+            """
+            INSERT INTO tool_bans
+                (round_number, tool_name, banned_by, banned_at_round, reason)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (round_number, tool_name, banned_by, banned_at_round, reason),
+        )
+        await self._conn.commit()
+
+    async def get_tool_bans(self, round_number: int | None = None) -> list[dict]:
+        if round_number is not None:
+            cursor = await self._conn.execute(
+                'SELECT * FROM tool_bans WHERE round_number = ? ORDER BY id',
+                (round_number,),
+            )
+        else:
+            cursor = await self._conn.execute('SELECT * FROM tool_bans ORDER BY id')
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]

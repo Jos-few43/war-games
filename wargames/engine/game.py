@@ -12,10 +12,11 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from wargames.engine.draft import DraftEngine
+from wargames.engine.draft import DraftEngine, EnhancedDraftEngine
 from wargames.engine.elo import calculate_elo
-from wargames.engine.judge import Judge
+from wargames.engine.judge import Judge, JudgeCalibration
 from wargames.engine.round import RoundEngine
+from wargames.models import ToolCategory, ToolPool
 from wargames.engine.strategy import (
     extract_strategies,
     get_top_strategies,
@@ -74,6 +75,97 @@ class GameEngine:
         """
         self._on_event = callback
 
+    def _setup_tool_pools(self, draft_engine: EnhancedDraftEngine) -> None:
+        """Configure tool pools for enhanced draft based on game settings."""
+        if self.config.draft.use_asymmetric_pools:
+            # Red-specific offensive tools
+            draft_engine.add_pool(
+                ToolPool(
+                    name='red_offensive',
+                    category=ToolCategory.EXPLOIT,
+                    team='red',
+                    available_tools=[
+                        'port_scanner',
+                        'fuzzer',
+                        'sqli_kit',
+                        'prompt_injector',
+                        'social_eng_kit',
+                        'priv_esc_toolkit',
+                    ],
+                )
+            )
+            # Blue-specific defensive tools
+            draft_engine.add_pool(
+                ToolPool(
+                    name='blue_defensive',
+                    category=ToolCategory.DEFENSE,
+                    team='blue',
+                    available_tools=[
+                        'waf_rules',
+                        'ids_signatures',
+                        'input_sanitizer',
+                        'rate_limiter',
+                        'logging_alerting',
+                        'sandboxing',
+                    ],
+                )
+            )
+        else:
+            # Shared offensive pool
+            draft_engine.add_pool(
+                ToolPool(
+                    name='shared_offensive',
+                    category=ToolCategory.EXPLOIT,
+                    available_tools=[
+                        'port_scanner',
+                        'fuzzer',
+                        'sqli_kit',
+                        'prompt_injector',
+                        'social_eng_kit',
+                        'priv_esc_toolkit',
+                    ],
+                )
+            )
+            # Shared defensive pool
+            draft_engine.add_pool(
+                ToolPool(
+                    name='shared_defensive',
+                    category=ToolCategory.DEFENSE,
+                    available_tools=[
+                        'waf_rules',
+                        'ids_signatures',
+                        'input_sanitizer',
+                        'rate_limiter',
+                        'logging_alerting',
+                        'sandboxing',
+                    ],
+                )
+            )
+
+        # Shared recon and utility pools (always shared)
+        draft_engine.add_pool(
+            ToolPool(
+                name='shared_recon',
+                category=ToolCategory.RECON,
+                available_tools=[
+                    'cve_database',
+                    'network_mapper',
+                    'code_analyzer',
+                ],
+            )
+        )
+        draft_engine.add_pool(
+            ToolPool(
+                name='shared_utility',
+                category=ToolCategory.UTILITY,
+                available_tools=[
+                    'extra_time',
+                    'second_attempt',
+                    'hint',
+                ],
+            )
+        )
+
     async def init(self):
         """Initialize database and LLM clients.
 
@@ -119,11 +211,27 @@ class GameEngine:
         """
         red_agent = RedTeamAgent(self._red_client)
         blue_agent = BlueTeamAgent(self._blue_client)
-        judge = Judge(self._judge_client)
-        draft_engine = DraftEngine(
-            picks_per_team=self.config.draft.picks_per_team,
-            style=self.config.draft.style.value,
+
+        # Initialize judge with optional calibration
+        judge = Judge(
+            self._judge_client,
+            enable_calibration=True,
         )
+
+        # Initialize draft engine (standard or enhanced)
+        if self.config.draft.enhanced:
+            draft_engine = EnhancedDraftEngine(
+                picks_per_team=self.config.draft.picks_per_team,
+                bans_per_team=self.config.draft.bans_per_team,
+                style=self.config.draft.style.value,
+            )
+            # Setup tool pools
+            self._setup_tool_pools(draft_engine)
+        else:
+            draft_engine = DraftEngine(
+                picks_per_team=self.config.draft.picks_per_team,
+                style=self.config.draft.style.value,
+            )
 
         red_lessons = []
         blue_lessons = []
