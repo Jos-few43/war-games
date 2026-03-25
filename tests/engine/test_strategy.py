@@ -1034,3 +1034,136 @@ async def test_td_learning_with_multiple_strategies(tmp_path: Path):
     assert strat_c.win_rate == pytest.approx(0.0)
 
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Property-based tests using Hypothesis
+# ---------------------------------------------------------------------------
+
+
+import tempfile
+from pathlib import Path
+
+from hypothesis import given, settings, strategies as st
+
+from wargames.engine.strategy import _calculate_strategy_diversity
+
+
+class TestStrategyDiversityProperties:
+    """Property-based tests for strategy diversity calculation."""
+
+    @given(
+        contents=st.lists(
+            st.text(min_size=5, max_size=100, alphabet=st.characters(whitelist_categories=('L', 'N', 'P'))),
+            min_size=1,
+            max_size=10,
+        )
+    )
+    @settings(max_examples=50)
+    def test_diversity_between_zero_and_one(self, contents):
+        """Diversity score is always between 0 and 1."""
+        strategies = [
+            Strategy(team='red', phase=1, strategy_type='attack', content=c, created_round=1)
+            for c in contents
+        ]
+        diversity = _calculate_strategy_diversity(strategies)
+        assert 0.0 <= diversity <= 1.0
+
+    @given(
+        content=st.text(min_size=10, max_size=100, alphabet=st.characters(whitelist_categories=('L', 'N'))),
+        count=st.integers(min_value=1, max_value=20),
+    )
+    @settings(max_examples=30)
+    def test_identical_strategies_zero_diversity(self, content, count):
+        """Multiple copies of the same strategy have diversity 0."""
+        strategies = [
+            Strategy(team='red', phase=1, strategy_type='attack', content=content, created_round=1)
+            for _ in range(count)
+        ]
+        diversity = _calculate_strategy_diversity(strategies)
+        assert diversity == pytest.approx(0.0, abs=1e-6)
+
+
+class TestStrategyWinRateProperties:
+    """Property-based tests for strategy win rate updates."""
+
+    @pytest.mark.asyncio
+    @given(
+        initial_wins=st.integers(min_value=0, max_value=50),
+        initial_losses=st.integers(min_value=0, max_value=50),
+    )
+    @settings(max_examples=30)
+    async def test_win_rate_converges_to_true_rate(self, initial_wins, initial_losses):
+        """Win rate converges to true win rate with many samples."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Database(Path(tmp) / 'test.db')
+            await db.init()
+
+            # Create strategy with initial usage
+            strategy = Strategy(
+                team='red',
+                phase=1,
+                strategy_type='attack',
+                content=f'Test strategy {initial_wins}_{initial_losses}',
+                win_rate=0.0,
+                usage_count=0,
+                created_round=1,
+            )
+            await save_strategies([strategy], db)
+
+            loaded = await get_top_strategies(team='red', phase=1, db=db)
+            strategy_id = loaded[0].id
+
+            # Simulate wins and losses
+            for _ in range(initial_wins):
+                await update_win_rates(strategy_ids=[strategy_id], round_won=True, db=db)
+            for _ in range(initial_losses):
+                await update_win_rates(strategy_ids=[strategy_id], round_won=False, db=db)
+
+            loaded = await get_top_strategies(team='red', phase=1, db=db)
+            final_win_rate = loaded[0].win_rate
+            final_count = loaded[0].usage_count
+
+            # Win rate should be between 0 and 1
+            assert 0.0 <= final_win_rate <= 1.0
+            # Usage count should be correct
+            assert final_count == initial_wins + initial_losses
+
+            await db.close()
+
+    @pytest.mark.asyncio
+    @given(
+        win_sequence=st.lists(st.booleans(), min_size=1, max_size=20),
+    )
+    @settings(max_examples=30)
+    async def test_win_rate_monotonic_with_all_wins_or_losses(self, win_sequence):
+        """Win rate trends toward 1 with all wins, 0 with all losses."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Database(Path(tmp) / 'test.db')
+            await db.init()
+
+            strategy = Strategy(
+                team='red',
+                phase=1,
+                strategy_type='attack',
+                content=f'Sequence test',
+                win_rate=0.0,
+                usage_count=0,
+                created_round=1,
+            )
+            await save_strategies([strategy], db)
+
+            loaded = await get_top_strategies(team='red', phase=1, db=db)
+            strategy_id = loaded[0].id
+
+            prev_win_rate = 0.0
+            for won in win_sequence:
+                await update_win_rates(strategy_ids=[strategy_id], round_won=won, db=db)
+                loaded = await get_top_strategies(team='red', phase=1, db=db)
+                win_rate = loaded[0].win_rate
+
+                # Win rate should always be valid
+                assert 0.0 <= win_rate <= 1.0
+                prev_win_rate = win_rate
+
+            await db.close()

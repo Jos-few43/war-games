@@ -1,0 +1,4 @@
+# file: /var/home/yish/PROJECTz/war-games/wargames/engine/strategy.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.1, 0.2, 0.7, 1.0, ',', '?', 'content', 'created_round', 'id', 'opp_effectiveness', 'opp_usage_count', 'phase', 'red', 'role', 'strategy_type', 'team', 'usage_count', 'user', 'win_rate']

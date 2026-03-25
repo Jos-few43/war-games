@@ -1,0 +1,4 @@
+# file: /var/home/yish/PROJECTz/war-games/wargames/models.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.3, 0.5, 0.7, 2.0, 7.5, 30.0, 60.0, '$', '24h', 'Custom resource list', 'Fallback base URL', 'Fallback model name', 'Named loadout preset', 'after', 'api_key', 'available_tools', 'before', 'blue_decisive_win', 'blue_win', 'code-vuln', 'config', 'critical', 'defense', 'exploit', 'high', 'linear', 'low', 'medium', 'mixed', 'prompt-injection', 'rates', 'recon', 'red_auto_win', 'red_critical_win', 'red_win', 'snake', 'social-engineering', 'timeout', 'utility']

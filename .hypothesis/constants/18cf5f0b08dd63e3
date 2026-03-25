@@ -1,0 +1,4 @@
+# file: /var/home/yish/PROJECTz/war-games/wargames/output/db.py
+# hypothesis_version: 6.151.9
+
+[0.0, 'active', 'attacks', 'auto_win', 'auto_wins', 'blocked', 'blue', 'blue_debrief', 'blue_threshold', 'blue_wins', 'bug_reports', 'completion_tokens', 'cost', 'cve_id', 'cvss_base_score', 'cvss_base_severity', 'cvss_impact_score', 'cvss_temporal_score', 'cvss_vector_string', 'defenses', 'description', 'domain', 'draft_picks', 'exploit_available', 'exploit_code', 'exploit_in_exploitdb', 'fetched_at', 'fix_hint', 'opp_effectiveness', 'opp_usage_count', 'outcome', 'patches', 'phase', 'poc_available', 'points', 'points_deducted', 'prompt_tokens', 'red', 'red_debrief', 'red_score', 'red_wins', 'resource_category', 'resource_name', 'round_number', 'severity', 'source', 'success', 'team', 'total_rounds', 'turn', 'value']

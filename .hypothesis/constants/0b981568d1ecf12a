@@ -1,0 +1,4 @@
+# file: /var/home/yish/PROJECTz/war-games/wargames/worker.py
+# hypothesis_version: 6.151.9
+
+[0.9, 6144, '-', 'Worker crashed: %s', '_', 'error', 'message', 'ram_used_pct', 'resource_recovered', 'resource_warning', 'system', 'vram_total_mb', 'vram_used_mb', 'wargames-worker', 'worker_error']

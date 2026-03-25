@@ -1,0 +1,4 @@
+# file: /var/home/yish/PROJECTz/war-games/wargames/engine/draft.py
+# hypothesis_version: 6.151.9
+
+[200, 'blue', 'code_analyzer', 'content', 'cve', 'cve_database', 'cve_id', 'defensive', 'description', 'extra_time', 'fuzzer', 'hint', 'ids_signatures', 'input_sanitizer', 'logging_alerting', 'network_mapper', 'offensive', 'port_scanner', 'priv_esc_toolkit', 'prompt_injector', 'rate_limiter', 'recon', 'red', 'role', 'sandboxing', 'second_attempt', 'snake', 'social_eng_kit', 'sqli_kit', 'unknown', 'user', 'utility', 'waf_rules']

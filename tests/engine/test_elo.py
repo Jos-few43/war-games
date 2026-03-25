@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timezone
 
 import pytest
+from hypothesis import given, settings, strategies as st
 
 from wargames.engine.elo import ModelRating, calculate_elo
 
@@ -92,49 +93,49 @@ class TestCalculateEloDraw:
 
 class TestModelRatingDefaults:
     def test_default_rating(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         assert mr.rating == INITIAL_RATING
 
     def test_default_wins(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         assert mr.wins == 0
 
     def test_default_losses(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         assert mr.losses == 0
 
     def test_default_draws(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         assert mr.draws == 0
 
     def test_default_last_played(self):
-        mr = ModelRating(model_name="test-model")
-        assert mr.last_played == ""
+        mr = ModelRating(model_name='test-model')
+        assert mr.last_played == ''
 
     def test_model_name_stored(self):
-        mr = ModelRating(model_name="gpt-4o")
-        assert mr.model_name == "gpt-4o"
+        mr = ModelRating(model_name='gpt-4o')
+        assert mr.model_name == 'gpt-4o'
 
 
 class TestModelRatingRecordWin:
     def test_record_win_updates_rating(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         mr.record_win(1516.0)
         assert mr.rating == 1516.0
 
     def test_record_win_increments_wins(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         mr.record_win(1516.0)
         assert mr.wins == 1
 
     def test_record_win_does_not_change_losses_or_draws(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         mr.record_win(1516.0)
         assert mr.losses == 0
         assert mr.draws == 0
 
     def test_record_win_sets_last_played(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         before = datetime.now(timezone.utc)
         mr.record_win(1516.0)
         after = datetime.now(timezone.utc)
@@ -142,14 +143,14 @@ class TestModelRatingRecordWin:
         assert before <= ts <= after
 
     def test_record_win_last_played_is_utc_iso(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         mr.record_win(1516.0)
         # Should parse cleanly and end with +00:00 or Z
         ts = datetime.fromisoformat(mr.last_played)
         assert ts.tzinfo is not None
 
     def test_record_win_multiple(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         mr.record_win(1516.0)
         mr.record_win(1530.0)
         assert mr.wins == 2
@@ -158,23 +159,23 @@ class TestModelRatingRecordWin:
 
 class TestModelRatingRecordLoss:
     def test_record_loss_updates_rating(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         mr.record_loss(1484.0)
         assert mr.rating == 1484.0
 
     def test_record_loss_increments_losses(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         mr.record_loss(1484.0)
         assert mr.losses == 1
 
     def test_record_loss_does_not_change_wins_or_draws(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         mr.record_loss(1484.0)
         assert mr.wins == 0
         assert mr.draws == 0
 
     def test_record_loss_sets_last_played(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         before = datetime.now(timezone.utc)
         mr.record_loss(1484.0)
         after = datetime.now(timezone.utc)
@@ -184,25 +185,134 @@ class TestModelRatingRecordLoss:
 
 class TestModelRatingRecordDraw:
     def test_record_draw_updates_rating(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         mr.record_draw(1500.0)
         assert mr.rating == 1500.0
 
     def test_record_draw_increments_draws(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         mr.record_draw(1500.0)
         assert mr.draws == 1
 
     def test_record_draw_does_not_change_wins_or_losses(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         mr.record_draw(1500.0)
         assert mr.wins == 0
         assert mr.losses == 0
 
     def test_record_draw_sets_last_played(self):
-        mr = ModelRating(model_name="test-model")
+        mr = ModelRating(model_name='test-model')
         before = datetime.now(timezone.utc)
         mr.record_draw(1500.0)
         after = datetime.now(timezone.utc)
         ts = datetime.fromisoformat(mr.last_played)
         assert before <= ts <= after
+
+
+# ---------------------------------------------------------------------------
+# Property-based tests using Hypothesis
+# ---------------------------------------------------------------------------
+
+
+class TestEloProperties:
+    """Property-based tests for ELO calculation invariants."""
+
+    @given(
+        rating_a=st.floats(min_value=100.0, max_value=3000.0),
+        rating_b=st.floats(min_value=100.0, max_value=3000.0),
+    )
+    @settings(max_examples=100)
+    def test_elo_rating_sum_conserved(self, rating_a, rating_b):
+        """Total rating points are always conserved (within floating-point precision)."""
+        new_a, new_b = calculate_elo(rating_a, rating_b)
+        assert abs((new_a + new_b) - (rating_a + rating_b)) < 1e-6
+
+    @given(
+        rating_a=st.floats(min_value=100.0, max_value=3000.0),
+        rating_b=st.floats(min_value=100.0, max_value=3000.0),
+    )
+    @settings(max_examples=100)
+    def test_winner_always_gains_points(self, rating_a, rating_b):
+        """The winner always gains rating points."""
+        new_winner, _ = calculate_elo(rating_a, rating_b)
+        assert new_winner > rating_a
+
+    @given(
+        rating_a=st.floats(min_value=100.0, max_value=3000.0),
+        rating_b=st.floats(min_value=100.0, max_value=3000.0),
+    )
+    @settings(max_examples=100)
+    def test_loser_always_loses_points(self, rating_a, rating_b):
+        """The loser always loses rating points."""
+        _, new_loser = calculate_elo(rating_a, rating_b)
+        assert new_loser < rating_b
+
+    @given(
+        rating_a=st.floats(min_value=100.0, max_value=3000.0),
+        rating_b=st.floats(min_value=100.0, max_value=3000.0),
+    )
+    @settings(max_examples=100)
+    def test_draw_equal_ratings_no_change(self, rating_a, rating_b):
+        """In a draw, ratings move toward each other but sum is conserved."""
+        new_a, new_b = calculate_elo(rating_a, rating_b, draw=True)
+        # Sum is conserved
+        assert abs((new_a + new_b) - (rating_a + rating_b)) < 1e-6
+        # If ratings were equal, they stay equal
+        if abs(rating_a - rating_b) < 0.01:
+            assert abs(new_a - rating_a) < 0.01
+            assert abs(new_b - rating_b) < 0.01
+
+    @given(
+        rating_a=st.floats(min_value=100.0, max_value=3000.0),
+        rating_b=st.floats(min_value=100.0, max_value=3000.0),
+    )
+    @settings(max_examples=100)
+    def test_point_exchange_symmetry(self, rating_a, rating_b):
+        """Points gained by winner equals points lost by loser (approximately)."""
+        new_a, new_b = calculate_elo(rating_a, rating_b)
+        gain_a = new_a - rating_a
+        loss_b = rating_b - new_b
+        assert abs(gain_a - loss_b) < 1e-6
+
+    @given(
+        rating=st.floats(min_value=100.0, max_value=3000.0),
+    )
+    @settings(max_examples=50)
+    def test_elo_change_bounded_by_k_factor(self, rating):
+        """Maximum rating change per game is bounded by K-factor."""
+        # Against a much lower-rated opponent
+        new_rating, _ = calculate_elo(rating, 100.0)
+        change = abs(new_rating - rating)
+        assert change <= 32.0  # K_FACTOR
+
+        # Against a much higher-rated opponent
+        new_rating, _ = calculate_elo(rating, 2900.0)
+        change = abs(new_rating - rating)
+        assert change <= 32.0  # K_FACTOR
+
+
+class TestModelRatingProperties:
+    """Property-based tests for ModelRating dataclass."""
+
+    @given(
+        initial_rating=st.floats(min_value=100.0, max_value=3000.0),
+        new_rating=st.floats(min_value=100.0, max_value=3000.0),
+    )
+    @settings(max_examples=50)
+    def test_record_win_updates_rating(self, initial_rating, new_rating):
+        """Recording a win updates the rating to the specified value."""
+        mr = ModelRating(model_name="test", rating=initial_rating)
+        mr.record_win(new_rating)
+        assert mr.rating == new_rating
+        assert mr.wins == 1
+
+    @given(
+        wins=st.integers(min_value=0, max_value=100),
+        losses=st.integers(min_value=0, max_value=100),
+        draws=st.integers(min_value=0, max_value=100),
+    )
+    @settings(max_examples=50)
+    def test_total_games_equals_sum(self, wins, losses, draws):
+        """Total games played equals wins + losses + draws."""
+        mr = ModelRating(model_name="test", wins=wins, losses=losses, draws=draws)
+        assert mr.wins + mr.losses + mr.draws == wins + losses + draws

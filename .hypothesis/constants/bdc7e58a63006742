@@ -1,0 +1,4 @@
+# file: /var/home/yish/PROJECTz/war-games/wargames/engine/game.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.1, 1.0, 1000.0, 1500.0, 500, 'blue', 'blue_defensive', 'blue_wins', 'code_analyzer', 'completion_tokens', 'cve_database', 'draw', 'draws', 'error', 'extra_time', 'fuzzer', 'hint', 'ids_signatures', 'input_sanitizer', 'judge', 'logging_alerting', 'losses', 'model_used', 'network_mapper', 'opp_effectiveness', 'opp_usage_count', 'port_scanner', 'priv_esc_toolkit', 'prompt_injector', 'prompt_tokens', 'rate_limiter', 'rating', 'red', 'red_offensive', 'red_wins', 'round', 'round_error', 'sandboxing', 'second_attempt', 'shared_defensive', 'shared_offensive', 'shared_recon', 'shared_utility', 'social_eng_kit', 'sqli_kit', 'waf_rules', 'wins']

@@ -1,0 +1,4 @@
+# file: /var/home/yish/PROJECTz/war-games/wargames/llm/client.py
+# hypothesis_version: 6.151.9
+
+[2.0, 429, 500, 502, 503, 504, '/chat/completions', 'Authorization', 'choices', 'completion_tokens', 'content', 'message', 'messages', 'model', 'model_used', 'prompt_tokens', 'retry-after', 'role', 'system', 'temperature', 'usage']

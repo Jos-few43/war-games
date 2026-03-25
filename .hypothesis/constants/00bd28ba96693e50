@@ -1,0 +1,4 @@
+# file: /var/home/yish/PROJECTz/war-games/wargames/output/vault.py
+# hypothesis_version: 6.151.9
+
+[120, '\n## Defenses\n\n', '## Attacks\n\n', '## Draft Picks\n\n', ', ', '-', '...', 'BLOCKED', 'FAIL', 'MISSED', 'SUCCESS', '[\\s]+', '[^a-z0-9\\s-]', '_', 'a', 'blue', 'bug-reports', 'debriefs', 'knowledge', 'patches', 'red', 'rounds', 'strategies']

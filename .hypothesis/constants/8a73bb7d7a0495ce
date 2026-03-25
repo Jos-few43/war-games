@@ -1,0 +1,4 @@
+# file: /var/home/yish/PROJECTz/war-games/wargames/engine/loadouts.py
+# hypothesis_version: 6.151.9
+
+['aggressive', 'balanced', 'code_analyzer', 'cve_database', 'defensive', 'fuzzer', 'input_sanitizer', 'loadout', 'loadout_custom', 'name', 'network_mapper', 'port_scanner', 'priv_esc_toolkit', 'prompt_injector', 'rate_limiter', 'recon', 'sandboxing', 'sqli_kit', 'waf_rules']
