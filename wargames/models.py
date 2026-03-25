@@ -260,6 +260,72 @@ class Strategy(BaseModel):
     opp_effectiveness: float = 0.0  # How effective opponent's usage was (0.0-1.0)
 
 
+# --- Tool Draft models ---
+
+
+class ToolCategory(str, Enum):
+    """Categories of tools available in the game."""
+
+    EXPLOIT = 'exploit'
+    RECON = 'recon'
+    DEFENSE = 'defense'
+    UTILITY = 'utility'
+
+
+class ToolPool(BaseModel):
+    """A pool of available tools for drafting.
+
+    Tools are organized by category and can be team-specific or shared.
+    """
+
+    name: str
+    category: ToolCategory
+    team: str | None = None  # None = available to both teams
+    available_tools: list[str] = Field(default_factory=list)
+    max_picks: int = Field(
+        default=3, gt=0, description='Maximum tools that can be picked from this pool'
+    )
+
+    @field_validator('available_tools', mode='before')
+    @classmethod
+    def ensure_list(cls, v: object) -> list[str]:
+        if isinstance(v, str):
+            return [v]
+        return v if isinstance(v, list) else []
+
+
+class ToolBan(BaseModel):
+    """A banned tool that cannot be used in the current game.
+
+    Bans can be applied during the draft phase to remove tools from play.
+    """
+
+    tool_name: str
+    banned_by: str  # 'red' or 'blue'
+    banned_at_round: int
+    reason: str = ''  # Optional strategic reason for the ban
+
+
+class EnhancedDraftPick(DraftPick):
+    """Extended draft pick with ban information."""
+
+    is_ban: bool = False  # True if this pick is actually a ban
+    banned_tool: str | None = None  # Tool being banned (if is_ban=True)
+
+
+class EnhancedDraftState(BaseModel):
+    """State of an enhanced draft with bans and separate pools."""
+
+    round: int
+    phase: Phase
+    red_picks: list[EnhancedDraftPick] = Field(default_factory=list)
+    blue_picks: list[EnhancedDraftPick] = Field(default_factory=list)
+    red_bans: list[ToolBan] = Field(default_factory=list)
+    blue_bans: list[ToolBan] = Field(default_factory=list)
+    available_pools: list[ToolPool] = Field(default_factory=list)
+    current_turn: str  # 'red' or 'blue'
+
+
 # --- Tournament models ---
 
 
