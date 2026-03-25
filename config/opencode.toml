@@ -1,0 +1,48 @@
+# War Games configuration using OpenCode built-in LLMs
+# Runs using your existing OpenCode tokens - no additional cost!
+
+[game]
+name = "opencode-season"
+rounds = 5  # Smaller for testing
+turn_limit = 4
+score_threshold = 6
+phase_advance_score = 4.0
+
+[draft]
+picks_per_team = 2  # Smaller for testing
+style = "snake"
+
+[teams.red]
+name = "Red Team"
+# Special marker to use OpenCode provider
+model = "opencode"
+model_name = "opencode-go/kimi-k2.5"
+temperature = 0.8
+timeout = 30.0
+
+[teams.blue]
+name = "Blue Team"
+model = "opencode"
+model_name = "opencode-go/qwen-2.5-coder-32b"
+temperature = 0.4
+timeout = 30.0
+
+[teams.judge]
+name = "Judge"
+model = "opencode"
+model_name = "opencode-go/kimi-k2.5"
+temperature = 0.2
+timeout = 60.0
+
+[crawler]
+enabled = false
+
+[output.vault]
+enabled = false
+path = "~/OpenClaw-Vault/WarGames"
+
+[output.database]
+path = "~/.local/share/wargames/opencode-test.db"
+
+[scoring]
+profile = "balanced"

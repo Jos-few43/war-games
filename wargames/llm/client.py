@@ -1,9 +1,21 @@
 import asyncio
 import logging
+from typing import TYPE_CHECKING
 
 import httpx
 
 from wargames.models import TeamSettings
+
+if TYPE_CHECKING:
+    from .opencode_provider import OpenCodeProvider
+
+try:
+    from .opencode_provider import OpenCodeProvider
+
+    OPENCODE_AVAILABLE = True
+except ImportError:
+    OPENCODE_AVAILABLE = False
+    OpenCodeProvider = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -18,25 +30,33 @@ class LLMClient:
 
     def __init__(self, settings: TeamSettings):
         self.settings = settings
-        headers = {}
-        if settings.api_key:
-            headers['Authorization'] = f'Bearer {settings.api_key}'
-        self._http = httpx.AsyncClient(
-            base_url=settings.model,
-            timeout=settings.timeout,
-            headers=headers,
-        )
-
-        self._fallback_http: httpx.AsyncClient | None = None
-        if settings.fallback_model:
-            fb_headers = {}
-            if settings.fallback_api_key:
-                fb_headers['Authorization'] = f'Bearer {settings.fallback_api_key}'
-            self._fallback_http = httpx.AsyncClient(
-                base_url=settings.fallback_model,
+        # Check if we should use the OpenCode provider
+        if getattr(settings, 'model', None) == 'opencode' and OPENCODE_AVAILABLE:
+            self._provider = OpenCodeProvider(model=settings.model_name)
+            self._http = None
+            self._fallback_http = None
+        else:
+            self._provider = None
+            self.settings = settings
+            headers = {}
+            if settings.api_key:
+                headers['Authorization'] = f'Bearer {settings.api_key}'
+            self._http = httpx.AsyncClient(
+                base_url=settings.model,
                 timeout=settings.timeout,
-                headers=fb_headers,
+                headers=headers,
             )
+
+            self._fallback_http: httpx.AsyncClient | None = None
+            if settings.fallback_model:
+                fb_headers = {}
+                if settings.fallback_api_key:
+                    fb_headers['Authorization'] = f'Bearer {settings.fallback_api_key}'
+                self._fallback_http = httpx.AsyncClient(
+                    base_url=settings.fallback_model,
+                    timeout=settings.timeout,
+                    headers=fb_headers,
+                )
 
         self._prompt_tokens = 0
         self._completion_tokens = 0
@@ -95,6 +115,13 @@ class LLMClient:
         return usage
 
     async def chat(self, messages: list[dict], system: str | None = None) -> str:
+        # Use OpenCode provider if configured
+        if self._provider is not None:
+            if system:
+                messages = [{'role': 'system', 'content': system}, *messages]
+            return await self._provider.chat(messages, system)
+
+        # Use HTTP provider (original logic)
         if system:
             messages = [{'role': 'system', 'content': system}, *messages]
 
@@ -135,6 +162,7 @@ class LLMClient:
             return content
 
     async def close(self):
-        await self._http.aclose()
+        if self._http:
+            await self._http.aclose()
         if self._fallback_http:
             await self._fallback_http.aclose()

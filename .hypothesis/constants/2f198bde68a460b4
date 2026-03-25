@@ -1,0 +1,4 @@
+# file: /var/home/yish/PROJECTz/war-games/wargames/llm/opencode_provider.py
+# hypothesis_version: 6.151.9
+
+['Assistant:', 'completion_tokens', 'content', 'model_used', 'prompt_tokens', 'role', 'user']
