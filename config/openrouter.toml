@@ -1,0 +1,63 @@
+# War Games configuration using OpenRouter API
+# Set OPENROUTER_API_KEY environment variable before running
+# Get your key at: https://openrouter.ai/keys
+
+[game]
+name = "openrouter-season"
+rounds = 10
+turn_limit = 6
+score_threshold = 8
+phase_advance_score = 5.0
+
+[draft]
+picks_per_team = 3
+style = "snake"
+enhanced = false
+bans_per_team = 1
+
+# Using OpenRouter with affordable models
+# You can swap in any models from: https://openrouter.ai/models
+
+[teams.red]
+name = "Red Team"
+model = "https://openrouter.ai/api/v1"
+model_name = "openai/gpt-4o-mini"
+temperature = 0.8
+timeout = 60.0
+api_key = "$OPENROUTER_API_KEY"
+
+[teams.blue]
+name = "Blue Team"
+model = "https://openrouter.ai/api/v1"
+model_name = "google/gemini-flash-1.5"
+temperature = 0.4
+timeout = 60.0
+api_key = "$OPENROUTER_API_KEY"
+
+[teams.judge]
+name = "Judge"
+model = "https://openrouter.ai/api/v1"
+model_name = "anthropic/claude-3.5-haiku"
+temperature = 0.2
+timeout = 90.0
+api_key = "$OPENROUTER_API_KEY"
+
+[crawler]
+enabled = false
+
+[output.vault]
+enabled = false
+path = "~/OpenClaw-Vault/WarGames"
+
+[output.database]
+path = "~/.local/share/wargames/openrouter-season.db"
+
+[scoring]
+profile = "balanced"
+
+[costs]
+# Approximate costs per 1K tokens (update based on current pricing)
+# Format: "model/name" = price_in_usd
+"openai/gpt-4o-mini" = 0.00015
+"google/gemini-flash-1.5" = 0.000075
+"anthropic/claude-3.5-haiku" = 0.00025
